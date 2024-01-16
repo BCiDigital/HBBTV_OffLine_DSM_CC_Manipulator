@@ -13,6 +13,8 @@ import xml.etree.ElementTree as ET
 import pkgutil
 
 applicationVersionNumber = "1.0.0"
+version_count=1
+cont_count = 1
 
 def calculate_section_crc(section):
     """
@@ -68,7 +70,7 @@ def sendStuffedPacket(output_stream):
     stuffed_packet = bytes ([0x47])
     stuffed_packet += b'\x1F\xFF\x10'
     stuffed_packet += b'\xFF' * 184
-    output_stream.write (stuffed_packet) 
+    output_stream.write(stuffed_packet) 
     
     
     
@@ -116,78 +118,133 @@ def buildDSMCCPacket(scte35_payload, version_count, packet, cont_count):
     Returns:
     Byte[]: DSMCC Packet
     """
-
+    """
+    print("v "+ str(version_count))
+    print("c "+str(cont_count))
+    """
     #print ("\nBuilding Descriptor with SCTE payload")
+    
+    
+    #DESCRIPTOR LIST SECTION - SPLICE INFORMATION - [A178-1r1_Dynamic-substitution-of-content  Table 3] - This information just goes before the SCTE35 data
 
-    #  Construct Descriptor
+    #24 bits
+    #8 bits: DVB_data_length
+    #3 bits: reserved for future use
+    #1 bit: event type
+    #4 bits: timeline type
+    #8 bits: private data length
     dsm_descriptor = bytes ([
     0x01   ,             # length of header
-    0xE1 ,                # RRR/Event type timeline type 0001
+    0xE1 ,                # RRR/Event type 0/ timeline type 0001
     0                 # length of private dats
     ])
+    #add the SCTE35 payload to the private data byte
     dsm_descriptor += scte35_payload
-
-    #res = ''.join(format(x, '02x') for x in dsm_descriptor)
-    #print ("Descriptor Payload:", binascii.hexlify(dsm_descriptor))
 
     # Base64 encode the SCTE35 payload
     encoded_payload = base64.b64encode(dsm_descriptor) 
-    # Print the encoded payload
-    #print("Base64 Encoded Payload:", encoded_payload)                            
 
 
-    #print ("Building DSMCC Section")
-
-    dsmcc_len = 6 + len (encoded_payload) + 4 + 8 + 4                             
+   
+    
+    
+    #DATA IN BEFORE DSMCC SECTION FORMAT - STREAM DATA
+    #8 bits
     dsmcc_packet = bytes ([0x47])
+    
+    #Next 16 bits from the packet, contains:
     dsmcc_packet += packet [1:3]
-
+    
+    #8 bits
     byte4 = cont_count | 0x10
     dsmcc_packet += byte4.to_bytes (1, 'big')
-    dsmcc_packet += b'\x00\x3D'                 # DSM-CC TID
+    
+    
+    
+    
+    
+    #DSMCC PACKET SECTION - [ISO/IEC 13818-6:1998  Table 9-2]
+    
+    #Length of DSM-CC Packet
+    #4 is the data that goes in before the table_id (stream data)
+    
+    #6 (should be 5) as this is the data after the dsmcc_section_length field and before we put the dsmcc descriptor field in
+    #encoded payload is the splice information from SCTE35
+    #4 (should be 12) as this is the length of the streamEventDescriptor without the private data bytes)
+    
+    #8 is the CRC_32
+    dsmcc_len = 6 + len (encoded_payload) + 4 + 8 + 4   
+    
+    # 8 bits - Table ID
+    # x3D means that section contains stream descriptors - [ISO/IEC 13818-6:1998  Table 9-3]
+    dsmcc_packet += b'\x00\x3D'  
+    
+    
+    #8 bits
+    #1 bit: section_syntax_indicator
+    #1 bit: private_indicator
+    #2 bits: reserved
+    #4 bits: start of DSMCC_section_length (length of everything after this field)
     dsmcc_siglen = dsmcc_len - 1
     dsmcc_packet += (((dsmcc_siglen & 0x0F00) >> 8) + 0xB0).to_bytes (1, 'big')
+    
+    #8 bits - rest of DSMCC_section_length
     dsmcc_packet += (dsmcc_siglen & 0x00FF).to_bytes (1, 'big')
-
-                            # Length of DSM-CC packet
-                            # TID Ext, do-it-now       ETSI TS 102 809 V1.2.1 / Section B32.  TID Ext = EventId 1 (14 bits), Bits 14/15 zero = 0x0001
-                            # Version 1 (RR/VVVVV/C)   RR / 5 BIts of Version number / Current/Next indicator (always 1)   Version 1 = 11000011 = C3
-                            # section 0
-                            # last sec 0
-    #version_field = 0xC0 + (version_count << 1) + 0x01  # Build RR/VVVVV/C
+    
+    
+    # TID Ext, do-it-now       ETSI TS 102 809 V1.2.1 / Section B32.  TID Ext = EventId 1 (14 bits), Bits 14/15 zero = 0x0001
+    #16 bits - table_id_extension (do-it-now)
+    dsmcc_packet += b'\x00\x01'
+    
+    
+    # Version 1 (RR/VVVVV/C)   RR / 5 BIts of Version number / Current/Next indicator (always 1)   Version 1 = 11000011 = C3
     #Mask version count to 5 bits so cycles round.
     version_count = version_count & 0b11111
     version_field = 0xC0 + (version_count << 1 ) + 0x01  # Build RR/VVVVV/C
-    dsmcc_packet += b'\x00\x01'
+    
+    #8 bits 
+    #2 bits: reserved
+    #5 bits: version_number
+    #1 bit: current_next_indicator
     dsmcc_packet += (version_field & 0x00FF).to_bytes (1, 'big')
     #dsmcc_packet += b'\xC3'
+    
+   
+    #16 bits 
+    #8 bits: section
+    #8 bits: last section
     dsmcc_packet += b'\x00\x00'
 
-
-
+    
+    
+    
+    #STREAM EVENT DESCRIPTOR SECTION - [ISO/IEC 13818-6:1998  Table 8-6]
+    #8 bits - descriptorTag - x1a = 26 which is Stream Event Descriptor
     dsmcc_packet += b'\x1a'
-
+    
+    #8 bits - Descriptor length (think this should be 10 + len(encoded_payload))
     dsmcc_payload_len = len (encoded_payload) + 4
     dsmcc_packet += (dsmcc_payload_len & 0x00FF).to_bytes (1, 'big') 
+    
+    
+    #80 bits - rest of descriptor
+    #16 bits: eventID
+    #31 bits: reserved
+    #33 bits: eventNPT
     dsmcc_packet += b'\x00\x01\xFF\xFF\xFF\xFE\x00\x00\x00\x00'
 
-    dsmcc_packet += encoded_payload# DSM-CC Descriptor - SCTE35 payload
-
-    #print ("DSM-CC Packet:", binascii.hexlify(dsmcc_packet)) 
-    #print ("DSM-CC Payload for CRC:", binascii.hexlify(dsmcc_packet [5:dsmcc_len+3]))
+    #THE PRIVATE DATA BYTES THE SCTE SECTION - Add the SCTE35 payload into the DSMCC Packet
+    dsmcc_packet += encoded_payload # DSM-CC Descriptor - SCTE35 payload
     
+    
+    
+    #32 Bits - The CRC_32 Section as sectionSyntaxIndicator == 1 FINAL PART FROM [ISO/IEC 13818-6:1998  Table 9-2]
     dsmcc_crc = calculate_section_crc (dsmcc_packet [5:(dsmcc_len + 3)])                
     dsmcc_packet += dsmcc_crc.to_bytes (4, 'big')
-    #dsmcc_packet += b'\xDF\x03\x5D\xFF'
 
-    #print ("DSM-CC Packet with CRC:", binascii.hexlify(dsmcc_packet)) 
-    #print ("Len of packet:", len (dsmcc_packet))
-
-
+    #Padding to make the packet it 188 bits.
     dsmcc_packet += b'\xFF' * (188-len (dsmcc_packet))
 
-    #print ("DSM-CC Packet with padding:", binascii.hexlify(dsmcc_packet)) 
-    #print ("Len of packet:", len (dsmcc_packet))
     return(dsmcc_packet)
 
     
@@ -214,9 +271,13 @@ def replace_scte35(input_file, output_file, scte35_pid, replaceNull):
     packetcount=0
     events_replaced=0
     events_notreplaced=0
+    """
     version_count=1
     cont_count = 1
+    """
     adaptation_len=0
+    global version_count
+    global cont_count
     #print ("Reading Input File :", input_file, "\nWriting Output File:", output_file, "\nSearching for SCTE35 Payload on PID: ", scte35_pid)
     print( "\nSearching for SCTE35 Payload on PID: ", scte35_pid)
     with open(input_file, 'rb') as input_stream, open (output_file, 'wb') as output_stream:
@@ -241,6 +302,8 @@ def replace_scte35(input_file, output_file, scte35_pid, replaceNull):
                 if packet [3] & 0x30 == 0x30:
                     adaptation_len = packet [4] + 1
                 scte35_length = packet[7+adaptation_len]
+                #print(f"\nAdaption: {adaptation_len}")
+                #print(f"SCTE: {scte35_length}")
                 scte35_payload = packet[4+adaptation_len:4+scte35_length+4+adaptation_len]
                 if scte35_length != 17:
                     #print("\nSCTE-35 Payload found in packet :", packetcount)
@@ -283,6 +346,7 @@ def replace_scte35(input_file, output_file, scte35_pid, replaceNull):
                         cont_count += 1
                         cont_count &= 0x0F
                         events_replaced += 1
+                        output_stream.write (dsmcc_packet)
                     
                     
             else:
@@ -610,6 +674,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
     print("0: Replace SCTE-35 with DSM-CC")
     print("1: Insert AIT")
     print("2: Replace SCTE-35 with DSM-CC and Insert AIT")
+    print("3: Insert DSM-CC Data")
     choice = int(input("Enter index of process choice: "))
     
     #IF BOTH
@@ -758,7 +823,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
 
 
     #If just AIT
-    else:
+    elif choice == 1:
         #Insert AIT Table
         #insert rate
         insertRate = (input("\nAIT Insert Rate (default is 1000): ")) 
@@ -808,7 +873,156 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         # PMT NEEDS TO ALTER AND INSERT
         print(f"Replacing old PMT with new PMT")
         replace_table("intermediate.ts", pmt_pid, 'pmtXML.xml', output_file)
+    
+    #ELSE insert the DSMCC extra packet data
+    else:
+        #get the period
+        insertPeriod = int(input("\nEnter the insertion period (seconds): "))
+        
+        # Get the file size
+        file_size = os.path.getsize("intermediate.ts")
+        #convert Bytes to bits
+        file_size_bits = file_size * 8
+        #from the PMT get the maximum bitrate
+        bitrate = getMaximumBitrate()
+        
+        #remove commas
+        bitrate = bitrate.replace(',', '')
+        # Convert the string to an integer
+        bitrate = int(bitrate)
+        """
+        print(f"filesize bits {file_size_bits}")
+        print(f"filesize bytes {file_size}")
+        print(f"filesize packets {(file_size)/188}")
+        print(f"bitrate {bitrate}")
+        """
+        """
+        #find the seconds of the file
+        fileSeconds = file_size / 29772800 
+        print(f"file length = {fileSeconds}")
+        """
+        #figure out proportions
+        #file time
+        #fileSeconds = file_size_bits / 6000124
+        fileSeconds = file_size_bits / (bitrate/36)
+        #print(f"file seconds {fileSeconds}")
+        proportion = insertPeriod / fileSeconds
+        #print(f"proportion {proportion}")
+        
+        packetsInFile = (file_size)//188
+        #print(f"packetsInFile {packetsInFile}")
+        everyXPackets = int(proportion * packetsInFile)
+        """
+        #convert this into packets - each packet is 188 bytes.
+        #work out number of bits in x seconds
+        bitsInSeconds = bitrate * insertPeriod
+        #divide by packet size
+        everyXPackets = bitsInSeconds // (188*8)
+        """
+        #print(f"new one every {everyXPackets} packets.")
+        
+        
+        
+        
+        #get the file name
+        fileName = input("\nEnter the name of the text file containing the data: ")
+        if not(fileName.endswith('.txt')):
+                fileName = fileName+".txt"
+        #get the data from the file
+        with open(fileName, 'r') as file:
+            # Read the content of the file
+            file_content = file.read()
+        #convert string to packet[]
+        """
+        packets = []
+        for i in range(0, len(file_content), 188):
+            packet = file_content[i:i + 188]
+            packets.append(packet)
+            for i in range (0, len(packets)):
+                print(packets[i])
+        """
+        packets = file_content.encode('utf-8')
+        #Append the file data into a dsmcc packet.
+        global version_count
+        global cont_count
+        dsmcc_packet = buildDSMCCPacket(packets, version_count, bytes.fromhex("FFFFFFFFFFFFFFFF"), cont_count)
+        #Update cont_count and version_count
+        cont_count += 1
+        cont_count &= 0x0F
+        version_count += 1
+        
+        #find new PMT for data packet
+        dataPID = findAvailablePIDs(int(pmt_pid,16))
+        hex_dataPID = '0x{:04x}'.format(dataPID)
+        
+        #update the PMT
+        addDSMCCComponentElement("pmtXML.xml", hex_dataPID)
 
+        
+        
+        #add in at intervals
+        
+        # Get the file size
+        file_size = os.path.getsize("intermediate.ts")
+        # Calculate the estimated number of TS packets
+        num_packets = packetsInFile
+        print(f"Every {insertPeriod} seconds in a file of size {int(fileSeconds)} seconds is {int(fileSeconds // insertPeriod)} equally spaced insertions")
+        print(f"Every {everyXPackets} packets in a file of size {num_packets} packets is {num_packets // everyXPackets} equally spaced insertions")
+        
+        packet_size = 188
+        pid_mask = 0x1FFF
+        target_pid = 0x1FFF
+        file_path = "intermediate.ts"
+        
+        with open(file_path, 'r+b') as file:
+            while True:
+                # Read and process the current packet
+                packet_data = file.read(packet_size)
+                #print("Reading packet")
+
+                # Break if no more packets
+                if not packet_data:
+                    #print("NO MORE")
+                    break
+
+                # Seek everyXpackets
+                file.seek(packet_size * (everyXPackets - 1), os.SEEK_CUR)
+                #print(f"SEEKING {everyXPackets} packets, {packet_size * (everyXPackets - 1)} bytes")
+
+                # Find the nearest packet on target_pid
+                while True:
+                    next_packet_data = file.read(packet_size)
+                    if not next_packet_data:
+                        break
+
+                    next_pid = struct.unpack('>H', next_packet_data[1:3])[0] & pid_mask
+                    #print(next_pid)
+                    #print(next_pid)
+                    if next_pid == target_pid:
+                        #print(f"Found the next NULL PID {next_pid}")
+
+                        # Seek back to the beginning of the found packet
+                        file.seek(-packet_size, os.SEEK_CUR)
+
+                        # Write dsmcc_packet bytes to replace the packet
+                        #file.write(dsmcc_packet)
+
+                        # Seek everyXpackets again (correcting the offset)
+                        #file.seek(packet_size * (everyXPackets - 1), os.SEEK_CUR)
+                        #print(f"SEEKING {everyXPackets} packets, {packet_size * (everyXPackets - 1)} bytes")
+
+                        break
+                
+        #copy the TS File to the output file
+        print(f"Replacing old PMT with new PMT")
+        replace_table("intermediate.ts", pmt_pid, 'pmtXML.xml', output_file)
+        """
+        for i in range(0, num_packets, everyXPackets):
+            #get nearest null packet (PID = 1FFF)
+        """ 
+            
+        
+        
 
     #Delete intermediate files
     """
@@ -816,6 +1030,57 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
     os.remove("intermediate-b.ts")
     """
 
+
+def getMaximumBitrate():
+    try:
+        # Parse the XML file
+        tree = ET.parse("pmtXML.xml")
+        root = tree.getroot()
+
+        # Find the maximum_bitrate value
+        for maximum_bitrate_elem in root.iter('maximum_bitrate_descriptor'):
+            maximum_bitrate = maximum_bitrate_elem.attrib.get('maximum_bitrate', None)
+            if maximum_bitrate:
+                return maximum_bitrate
+                
+    except ET.ParseError as e:
+        print(f"Error parsing XML file: {e}")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
+    return None
+
+def addDSMCCComponentElement(xml_file, pid):
+    """
+    Function to add a new component element within the existing PMT XML using xml.etree.ElementTree.
+    
+    Parameters:
+    xml_file (str): The file containing the XML for the PMT.
+    pid (str): The hex PID for the new component element.
+    """
+    
+    # Parse the XML file with ElementTree
+    tree = ET.parse(xml_file)
+    root = tree.getroot()
+
+    # Find the PMT element within the root
+    pmt_element = root.find(".//PMT")
+
+    if pmt_element is not None:
+        new_component = ET.Element("component", elementary_PID=pid, stream_type="0x0C")
+        ET.SubElement(new_component, "stream_identifier_descriptor", component_tag="0x09")
+        ET.SubElement(new_component, "data_stream_alignment_descriptor", alignment_type="0x09")
+        # Add the new component to the PMT
+        pmt_element.append(new_component)
+
+
+        # Save the modified XML
+        tree.write(xml_file, encoding="utf-8", xml_declaration=True)
+    else:
+        print("PMT element not found in the XML.")
+        
+            
+         
 
 
 def createAITXML(applicationID, organizationID, url, applicationProfile, applicationVersion, applicationName, initialPath):
@@ -1223,7 +1488,15 @@ if __name__ == "__main__":
        sys.exit(0)
     else: 
         processMultiple(input_file, output_file)
-    
+    #Delete intermediate files
+    """
+    #os.remove("intermediate.ts")
+    if os.path.exists("intermediate-b.ts"):
+        os.remove("intermediate-b.ts")
+    os.remove("patXML.xml")
+    os.remove("pmtXML.xml")
+    os.remove("dataXML.xml")
+    """
     
     """
     choices = serviceChoice()
