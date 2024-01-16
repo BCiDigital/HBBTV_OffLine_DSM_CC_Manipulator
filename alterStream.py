@@ -942,18 +942,23 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
                 print(packets[i])
         """
         packets = file_content.encode('utf-8')
+        #find new PID for data packet
+        dataPID = findAvailablePIDs(int(pmt_pid,16))
+        hex_dataPID = '0x{:04x}'.format(dataPID)
+        #for the packet
+        result = 'FF' + hex_dataPID[2:]  # Skip the '0x' prefix when concatenating
+        result = bytes.fromhex(result)
         #Append the file data into a dsmcc packet.
         global version_count
         global cont_count
-        dsmcc_packet = buildDSMCCPacket(packets, version_count, bytes.fromhex("FFFFFFFFFFFFFFFF"), cont_count)
+        #dsmcc_packet = buildDSMCCPacket(packets, version_count, bytes.fromhex("FFFFFFFFFFFFFFFF"), cont_count)
+        dsmcc_packet = buildDSMCCPacket(packets, version_count, result, cont_count)
         #Update cont_count and version_count
         cont_count += 1
         cont_count &= 0x0F
         version_count += 1
         
-        #find new PMT for data packet
-        dataPID = findAvailablePIDs(int(pmt_pid,16))
-        hex_dataPID = '0x{:04x}'.format(dataPID)
+        
         
         #update the PMT
         addDSMCCComponentElement("pmtXML.xml", hex_dataPID)
