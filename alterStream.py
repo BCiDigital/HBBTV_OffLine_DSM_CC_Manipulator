@@ -11,6 +11,7 @@ from datetime import datetime
 import xml.etree.ElementTree as ET
 #import hexdump
 import pkgutil
+import re
 
 applicationVersionNumber = "1.0.0"
 version_count=1
@@ -154,6 +155,7 @@ def buildDSMCCPacket(scte35_payload, version_count, packet, cont_count):
     
     #Next 16 bits from the packet, contains:
     dsmcc_packet += packet [1:3]
+    #print(packet[1:3])
     
     #8 bits
     byte4 = cont_count | 0x10
@@ -883,13 +885,28 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         file_size = os.path.getsize("intermediate.ts")
         #convert Bytes to bits
         file_size_bits = file_size * 8
+        """
         #from the PMT get the maximum bitrate
         bitrate = getMaximumBitrate()
-        
         #remove commas
-        bitrate = bitrate.replace(',', '')
+        bitrate = bitrate.replace(',','')
         # Convert the string to an integer
         bitrate = int(bitrate)
+        """
+        
+        #Just get the actual bitrate
+        # Run the tsbitrate command and capture the output
+        output = subprocess.check_output(['tsbitrate', input_file], text=True)
+
+        # Use a regular expression to extract the bitrate value
+        bitrate_match = re.search(r'TS bitrate: ([0-9,]+) b/s', output)
+        
+        if bitrate_match:
+            bitrate_str = bitrate_match.group(1)
+            # Remove commas and convert to an integer
+            bitrate = int(bitrate_str.replace(',', ''))
+            #print(bitrate)
+        
         """
         print(f"filesize bits {file_size_bits}")
         print(f"filesize bytes {file_size}")
@@ -904,8 +921,9 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         #figure out proportions
         #file time
         #fileSeconds = file_size_bits / 6000124
-        fileSeconds = file_size_bits / (bitrate/36)
-        #print(f"file seconds {fileSeconds}")
+        #fileSeconds = file_size_bits / (bitrate/36)
+        fileSeconds = file_size_bits / bitrate
+        print(f"file seconds {fileSeconds}")
         proportion = insertPeriod / fileSeconds
         #print(f"proportion {proportion}")
         
@@ -948,6 +966,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         #for the packet
         result = 'FF' + hex_dataPID[2:]  # Skip the '0x' prefix when concatenating
         result = bytes.fromhex(result)
+        #print(result)
         #Append the file data into a dsmcc packet.
         global version_count
         global cont_count
