@@ -923,7 +923,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         #fileSeconds = file_size_bits / 6000124
         #fileSeconds = file_size_bits / (bitrate/36)
         fileSeconds = file_size_bits / bitrate
-        print(f"file seconds {fileSeconds}")
+        #print(f"file seconds {fileSeconds}")
         proportion = insertPeriod / fileSeconds
         #print(f"proportion {proportion}")
         
