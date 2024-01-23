@@ -17,6 +17,9 @@ applicationVersionNumber = "1.0.0"
 version_count=1
 cont_count = 1
 
+version_count2=1
+cont_count2 = 1
+
 def calculate_section_crc(section):
     """
     A function that calculates the CRC of a section
@@ -338,7 +341,9 @@ def replace_scte35(input_file, output_file, scte35_pid, replaceNull):
                         #print ("SCTE Detected, len 17")
                         events_notreplaced +=1
                         #SEND STUFFED PACKET
-                        sendStuffedPacket(output_stream)
+                        #sendStuffedPacket(output_stream)
+                        #send original packet
+                        output_stream.write(packet)
                     
                     else:
                         #Still converting null splice into DSM-CC
@@ -467,7 +472,7 @@ def insert_table(input_file, pid, tablexml, reprate_ms, output_file):
 
 
 
-def findAvailablePIDs(pmtPID):
+def findAvailablePIDs(file_path, pmtPID):
     """
     A function to find the best PID for the AIT 
     
@@ -477,33 +482,55 @@ def findAvailablePIDs(pmtPID):
     Returns:
     pid(int): The PID to use for the AIT.
     """
-    intPID = int(str(pmtPID), 16)
-    #Get list of all PIDs
     pids = []
+    with open(file_path, 'r+b') as file:
+            while True:
+                # Read and process the current packet
+                packet_data = file.read(188)
+                #print("Reading packet")
 
-    # Parse the XML file
-    tree = ET.parse("dataXML.xml")
-    root = tree.getroot()
+                # Break if no more packets
+                if not packet_data:
+                    #print("NO MORE")
+                    break
+                next_pid = struct.unpack('>H', packet_data[1:3])[0] & 0x1FFF
+                #print(next_pid)
+                #hexNext = int(next_pid, 16)
+                if(next_pid in pids):
+                    file.seek(188, os.SEEK_CUR)
+                else:
+                    pids.append(next_pid)
+                    file.seek(188, os.SEEK_CUR)
+                
+                
+                """
+                
+                #print(f"SEEKING {everyXPackets} packets, {packet_size * (everyXPackets - 1)} bytes")
 
-    # Find all metadata elements
-    metadata_elements = root.findall(".//metadata")
-
-    # Extract PID values and add them to the list
-    for metadata_element in metadata_elements:
-        pid = metadata_element.attrib.get("PID")
-        if pid is not None:
-            pid = int(pid.replace(',', ''))
-            pids.append(int(pid))
-    
+                # Find the nearest packet on target_pid
+                while True:
+                    next_packet_data = file.read(packet_size)
+                    if not next_packet_data:
+                        break
+                    #hex rep
+                    next_pid = struct.unpack('>H', next_packet_data[1:3])[0] & pid_mask
+                    hexNext = int(next_pid, 16)
+                    if(hexNext in pids):
+                        break
+                    else:
+                        pids.append(hexNext)
+                """    
+    #print(pids)
+    intPID = int(pmtPID, 16)
     if (intPID+1) in pids:
         # Get nearest PID over 891
-        found = false
+        found = False
         i = 891
-        while found == false:
+        while found == False:
             if i in pids:
                 i+=1
             else: 
-                found = true
+                found = True
                 return i
     else:
         return(intPID+1)
@@ -711,7 +738,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         if not insertRate:
             insertRate = 1000
         #find available PIDs
-        aitPID = findAvailablePIDs(int(pmt_pid,16))
+        aitPID = findAvailablePIDs(input_file, pmt_pid)
         hex_aitPID = '0x{:04x}'.format(aitPID)
         
         #Insert AIT Table
@@ -832,7 +859,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         if not insertRate:
             insertRate = 1000
         #find available PIDs
-        aitPID = findAvailablePIDs(int(pmt_pid,16))
+        aitPID = findAvailablePIDs(input_file, pmt_pid)
         hex_aitPID = hex_aitPID = '0x{:04x}'.format(aitPID)
         #Insert AIT Table
         
@@ -878,6 +905,8 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
     
     #ELSE insert the DSMCC extra packet data
     else:
+        #copy input to intermediate
+        copy_ts_file(input_file, 'intermediate.ts')
         #get the period
         insertPeriod = int(input("\nEnter the insertion period (seconds): "))
         
@@ -960,13 +989,29 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
                 print(packets[i])
         """
         packets = file_content.encode('utf-8')
-        #find new PID for data packet
-        dataPID = findAvailablePIDs(int(pmt_pid,16))
+        
+        
+        
+        
+        #find new PID for data packet, generated pid
+        dataPID = findAvailablePIDs(input_file, pmt_pid)
+        #print(f"data pid: {dataPID}")
+        
+        
+        
+        
         hex_dataPID = '0x{:04x}'.format(dataPID)
+        
         #for the packet
         result = 'FF' + hex_dataPID[2:]  # Skip the '0x' prefix when concatenating
+        #print(result)
+        #print(f"RESULT: {result}")
         result = bytes.fromhex(result)
         #print(result)
+        
+        
+        
+        """
         #Append the file data into a dsmcc packet.
         global version_count
         global cont_count
@@ -974,8 +1019,11 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         dsmcc_packet = buildDSMCCPacket(packets, version_count, result, cont_count)
         #Update cont_count and version_count
         cont_count += 1
+        print(f"cont count: {cont_count}")
         cont_count &= 0x0F
+        
         version_count += 1
+        """
         
         
         
@@ -1014,6 +1062,8 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
                 #print(f"SEEKING {everyXPackets} packets, {packet_size * (everyXPackets - 1)} bytes")
 
                 # Find the nearest packet on target_pid
+                global version_count
+                global cont_count
                 while True:
                     next_packet_data = file.read(packet_size)
                     if not next_packet_data:
@@ -1023,13 +1073,29 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
                     #print(next_pid)
                     #print(next_pid)
                     if next_pid == target_pid:
-                        #print(f"Found the next NULL PID {next_pid}")
+                        
+                        #create new DSMCC packet
+                        #Append the file data into a dsmcc packet.
+                        
+                        #dsmcc_packet = buildDSMCCPacket(packets, version_count, bytes.fromhex("FFFFFFFFFFFFFFFF"), cont_count)
+                        #print(f"cont count: {cont_count2}")
+                        dsmcc_packet = buildDSMCCPacket(packets, version_count, result, cont_count)
+                        #Update cont_count and version_count
+                        cont_count += 1
+                        
+                        cont_count &= 0x0F
+                        
+                        version_count += 1
+                        
+                        
 
+                        
                         # Seek back to the beginning of the found packet
                         file.seek(-packet_size, os.SEEK_CUR)
 
                         # Write dsmcc_packet bytes to replace the packet
-                        #file.write(dsmcc_packet)
+                        file.write(dsmcc_packet)
+                        
 
                         # Seek everyXpackets again (correcting the offset)
                         #file.seek(packet_size * (everyXPackets - 1), os.SEEK_CUR)
@@ -1040,6 +1106,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         #copy the TS File to the output file
         print(f"Replacing old PMT with new PMT")
         replace_table("intermediate.ts", pmt_pid, 'pmtXML.xml', output_file)
+        os.remove("intermediate.ts")
         """
         for i in range(0, num_packets, everyXPackets):
             #get nearest null packet (PID = 1FFF)
