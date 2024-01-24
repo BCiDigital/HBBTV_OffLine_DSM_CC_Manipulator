@@ -994,8 +994,18 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         
         
         #find new PID for data packet, generated pid
+        """
         dataPID = findAvailablePIDs(input_file, pmt_pid)
+        """
         #print(f"data pid: {dataPID}")
+        
+        #uncomment for custom pids
+        
+        dataPIDIn = int(input("\nEnter PID for packets: "))
+        dataPIDMinus = dataPIDIn - 1
+        dataPID = findAvailablePIDs(input_file, hex(dataPIDMinus))
+        if(dataPID != dataPIDIn):
+            print(f"PID {dataPIDIn} not available, PID {dataPID} used instead.")
         
         
         
