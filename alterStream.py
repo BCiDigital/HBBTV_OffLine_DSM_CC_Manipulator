@@ -12,6 +12,7 @@ import xml.etree.ElementTree as ET
 #import hexdump
 import pkgutil
 import re
+import math
 
 applicationVersionNumber = "1.0.0"
 version_count=1
@@ -956,7 +957,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         proportion = insertPeriod / fileSeconds
         #print(f"proportion {proportion}")
         
-        packetsInFile = (file_size)//188
+        packetsInFile = math.ceil((file_size)/188)
         #print(f"packetsInFile {packetsInFile}")
         everyXPackets = int(proportion * packetsInFile)
         """
@@ -970,7 +971,14 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         
         
         
+        #Option for Jitter (replacing packet intervals)
+        print("\nJitter Choice: ")
+        print(f"0: Account for jitter (insert packets as close to {insertPeriod}s in the stream)")
+        print(f"1: Don't account for jitter (insert packets {insertPeriod}s after the last packet insertion) ")
+        jitterChoice = int(input("Enter index of choice: "))
         
+        
+        """
         #get the file name
         fileName = input("\nEnter the name of the text file containing the data: ")
         if not(fileName.endswith('.txt')):
@@ -980,16 +988,25 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
             # Read the content of the file
             file_content = file.read()
         #convert string to packet[]
-        """
-        packets = []
-        for i in range(0, len(file_content), 188):
-            packet = file_content[i:i + 188]
-            packets.append(packet)
-            for i in range (0, len(packets)):
-                print(packets[i])
-        """
         packets = file_content.encode('utf-8')
+        """
         
+        #Option for data
+        print("\nData Choice: ")
+        print(f"0: Date")
+        print(f"1: YET TO ADD ")
+        print(f"2: YET TO ADD")
+        dataChoice = int(input("Enter index of choice: "))
+        if dataChoice == 0:
+            currentTime = datetime.now().strftime('%H%M%S')
+            hh = int(currentTime[:2])
+            mm = int(currentTime[2:4])
+            ss = int(currentTime[4:])
+            packets = bytes([hh,mm,ss])
+        elif dataChoice == 1:
+            packets = []
+        else:
+            packets = []
         
         
         
@@ -1057,33 +1074,63 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         file_path = "intermediate.ts"
         
         with open(file_path, 'r+b') as file:
+            #packet count
+            packetCount = 0
+            jitterCount = 1
             while True:
                 # Read and process the current packet
                 packet_data = file.read(packet_size)
+                
+                
+                
                 #print("Reading packet")
 
                 # Break if no more packets
                 if not packet_data:
                     #print("NO MORE")
                     break
-
+                    
+                #check if packet starts with sync byte
+                hex_string = binascii.hexlify(packet_data).decode('utf-8')
+                if not(hex_string.startswith("47")):
+                    #print(hex_string)
+                    print("SYNC ERROR - PACKETS MISALIGNED")
+                    break
+                
                 # Seek everyXpackets
-                file.seek(packet_size * (everyXPackets - 1), os.SEEK_CUR)
+                #if we are accounting for jitter, take away the jitter packets from the seek.
+                if jitterChoice == 0:
+                    file.seek((packet_size * (everyXPackets - 1))-(jitterCount*188), os.SEEK_CUR)
+                else:
+                    file.seek(packet_size * (everyXPackets - 1), os.SEEK_CUR)
                 #print(f"SEEKING {everyXPackets} packets, {packet_size * (everyXPackets - 1)} bytes")
+                
+                #increase packetCount
+                packetCount += 1
 
                 # Find the nearest packet on target_pid
                 global version_count
                 global cont_count
+                
+                #reset the jitter count
+                jitterCount = 1
                 while True:
                     next_packet_data = file.read(packet_size)
+                    
+                    
                     if not next_packet_data:
                         break
-
+                    #check if packet starts with sync byte  
+                    hex_string = binascii.hexlify(next_packet_data).decode('utf-8')
+                    if not(hex_string.startswith("47")):
+                        #print(hex_string)
+                        print("SYNC ERROR - PACKETS MISALIGNED")
+                        break
                     next_pid = struct.unpack('>H', next_packet_data[1:3])[0] & pid_mask
                     #print(next_pid)
                     #print(next_pid)
                     if next_pid == target_pid:
-                        
+                       
                         #create new DSMCC packet
                         #Append the file data into a dsmcc packet.
                         
@@ -1106,12 +1153,22 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
                         # Write dsmcc_packet bytes to replace the packet
                         file.write(dsmcc_packet)
                         
+                        #output information
+                        packetInsertionNumber = (packetCount*everyXPackets)+jitterCount
+                        #convert to time
+                        proportionPacket = packetInsertionNumber / packetsInFile
+                        proportionTime = proportionPacket * fileSeconds
+                        
+                        print(f"Packet {packetCount} inserted at {packetInsertionNumber} packets ({proportionTime} seconds)")
+                        
 
                         # Seek everyXpackets again (correcting the offset)
                         #file.seek(packet_size * (everyXPackets - 1), os.SEEK_CUR)
                         #print(f"SEEKING {everyXPackets} packets, {packet_size * (everyXPackets - 1)} bytes")
 
                         break
+                    else:
+                        jitterCount += 1
                 
         #copy the TS File to the output file
         print(f"Replacing old PMT with new PMT")
