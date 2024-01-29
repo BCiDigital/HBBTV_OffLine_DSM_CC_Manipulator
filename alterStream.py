@@ -183,8 +183,8 @@ def buildDSMCCPacket(scte35_payload, version_count, packet, cont_count):
     
     # 8 bits - Table ID
     # x3D means that section contains stream descriptors - [ISO/IEC 13818-6:1998  Table 9-3]
-    dsmcc_packet += b'\x00\x3D'  
-    
+    #dsmcc_packet += b'\x00\x3D'  
+    dsmcc_packet += b'\x3D'
     
     #8 bits
     #1 bit: section_syntax_indicator
@@ -255,7 +255,152 @@ def buildDSMCCPacket(scte35_payload, version_count, packet, cont_count):
 
     
 
+def buildDSMCCPacket3E(scte35_payload, version_count, packet, cont_count):
+    """
+    Function to build a DSMCC Payload from the Payload - with code 3E
     
+    Arguments:
+    scte35_payload (packet[]): The payload packets of the SCTE35
+    version_count (int): The version of the DSMCC payload
+    packet (packet): The SCTE35 packet.
+    cont_count (int): The continuity counter.
+    
+    Returns:
+    Byte[]: DSMCC Packet
+    """
+    """
+    print("v "+ str(version_count))
+    print("c "+str(cont_count))
+    """
+    #print ("\nBuilding Descriptor with SCTE payload")
+    
+    
+    #DESCRIPTOR LIST SECTION - SPLICE INFORMATION - [A178-1r1_Dynamic-substitution-of-content  Table 3] - This information just goes before the SCTE35 data
+    """
+    #24 bits
+    #8 bits: DVB_data_length
+    #3 bits: reserved for future use
+    #1 bit: event type
+    #4 bits: timeline type
+    #8 bits: private data length
+    dsm_descriptor = bytes ([
+    0x01   ,             # length of header
+    0xE1 ,                # RRR/Event type 0/ timeline type 0001
+    0                 # length of private dats
+    ])
+    #add the SCTE35 payload to the private data byte
+    dsm_descriptor += scte35_payload
+    """
+    # Base64 encode the SCTE35 payload
+    
+    encoded_payload = scte35_payload
+    #encoded_payload = base64.b64encode(scte35_payload) 
+    
+
+
+   
+    
+    
+    #DATA IN BEFORE DSMCC SECTION FORMAT - STREAM DATA
+    #8 bits
+    dsmcc_packet = bytes ([0x47])
+    
+    #Next 16 bits from the packet, contains:
+    dsmcc_packet += packet [1:3]
+    #print(packet[1:3])
+    
+    #8 bits
+    byte4 = cont_count | 0x10
+    dsmcc_packet += byte4.to_bytes (1, 'big')
+    
+    
+    
+    
+    
+    #DSMCC PACKET SECTION - [ISO/IEC 13818-6:1998  Table 9-2]
+    
+    #Length of DSM-CC Packet
+    #4 is the data that goes in before the table_id (stream data)
+    
+    #6 (should be 5) as this is the data after the dsmcc_section_length field and before we put the dsmcc descriptor field in
+    #encoded payload is the splice information from SCTE35
+    
+    
+    #8 is the CRC_32
+    dsmcc_len = 6 + len (encoded_payload) + 8 + 4   
+    
+    # 8 bits - Table ID
+    # x3D means that section contains stream descriptors - [ISO/IEC 13818-6:1998  Table 9-3]
+    #dsmcc_packet += b'\x00\x3E'  
+    dsmcc_packet += b'\x3E' 
+    
+    
+    #8 bits
+    #1 bit: section_syntax_indicator
+    #1 bit: private_indicator
+    #2 bits: reserved
+    #4 bits: start of DSMCC_section_length (length of everything after this field)
+    dsmcc_siglen = dsmcc_len - 1
+    dsmcc_packet += (((dsmcc_siglen & 0x0F00) >> 8) + 0xB0).to_bytes (1, 'big')
+    
+    #8 bits - rest of DSMCC_section_length
+    dsmcc_packet += (dsmcc_siglen & 0x00FF).to_bytes (1, 'big')
+    
+    
+    # TID Ext, do-it-now       ETSI TS 102 809 V1.2.1 / Section B32.  TID Ext = EventId 1 (14 bits), Bits 14/15 zero = 0x0001
+    #16 bits - table_id_extension (do-it-now)
+    dsmcc_packet += b'\x00\x01'
+    
+    
+    # Version 1 (RR/VVVVV/C)   RR / 5 BIts of Version number / Current/Next indicator (always 1)   Version 1 = 11000011 = C3
+    #Mask version count to 5 bits so cycles round.
+    version_count = version_count & 0b11111
+    version_field = 0xC0 + (version_count << 1 ) + 0x01  # Build RR/VVVVV/C
+    
+    #8 bits 
+    #2 bits: reserved
+    #5 bits: version_number
+    #1 bit: current_next_indicator
+    dsmcc_packet += (version_field & 0x00FF).to_bytes (1, 'big')
+    #dsmcc_packet += b'\xC3'
+    
+   
+    #16 bits 
+    #8 bits: section
+    #8 bits: last section
+    dsmcc_packet += b'\x00\x00'
+
+    
+    
+    """
+    #STREAM EVENT DESCRIPTOR SECTION - [ISO/IEC 13818-6:1998  Table 8-6]
+    #8 bits - descriptorTag - x1a = 26 which is Stream Event Descriptor
+    dsmcc_packet += b'\x1a'
+    
+    #8 bits - Descriptor length (think this should be 10 + len(encoded_payload))
+    dsmcc_payload_len = len (encoded_payload) + 4
+    dsmcc_packet += (dsmcc_payload_len & 0x00FF).to_bytes (1, 'big') 
+    
+    
+    #80 bits - rest of descriptor
+    #16 bits: eventID
+    #31 bits: reserved
+    #33 bits: eventNPT
+    dsmcc_packet += b'\x00\x01\xFF\xFF\xFF\xFE\x00\x00\x00\x00'
+    """
+    #THE PRIVATE DATA BYTES THE SCTE SECTION - Add the SCTE35 payload into the DSMCC Packet
+    dsmcc_packet += encoded_payload # DSM-CC Descriptor - SCTE35 payload
+    
+    
+    
+    #32 Bits - The CRC_32 Section as sectionSyntaxIndicator == 1 FINAL PART FROM [ISO/IEC 13818-6:1998  Table 9-2]
+    dsmcc_crc = calculate_section_crc (dsmcc_packet [5:(dsmcc_len + 3)])                
+    dsmcc_packet += dsmcc_crc.to_bytes (4, 'big')
+
+    #Padding to make the packet it 188 bits.
+    dsmcc_packet += b'\xFF' * (188-len (dsmcc_packet))
+
+    return(dsmcc_packet)
     
     
     
@@ -1113,6 +1258,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
                 global version_count
                 global cont_count
                 
+                
                 #reset the jitter count
                 jitterCount = 1
                 while True:
@@ -1141,7 +1287,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
                         
                          
                         
-                        dsmcc_packet = buildDSMCCPacket(packets, version_count, result, cont_count)
+                        dsmcc_packet = buildDSMCCPacket3E(packets, version_count, result, cont_count)
                         
                         #update iterator
                         iteratorCount += 1
@@ -1164,6 +1310,9 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
 
                         # Write dsmcc_packet bytes to replace the packet
                         file.write(dsmcc_packet)
+                        hex_string = binascii.hexlify(dsmcc_packet).decode('utf-8')
+
+                        print(hex_string)
                         
                         #output information
                         packetInsertionNumber = (packetCount*everyXPackets)+jitterCount
