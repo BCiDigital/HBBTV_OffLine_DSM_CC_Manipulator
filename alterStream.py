@@ -176,10 +176,10 @@ def buildDSMCCPacket(scte35_payload, version_count, packet, cont_count):
     
     #6 (should be 5) as this is the data after the dsmcc_section_length field and before we put the dsmcc descriptor field in
     #encoded payload is the splice information from SCTE35
-    #4 (should be 12) as this is the length of the streamEventDescriptor without the private data bytes)
+    #12 as this is the length of the streamEventDescriptor without the private data bytes)
     
-    #8 is the CRC_32
-    dsmcc_len = 6 + len (encoded_payload) + 4 + 8 + 4   
+    
+    dsmcc_len = 6 + len (encoded_payload) + 4 + 12 
     
     # 8 bits - Table ID
     # x3D means that section contains stream descriptors - [ISO/IEC 13818-6:1998  Table 9-3]
@@ -294,6 +294,7 @@ def buildDSMCCPacket3E(scte35_payload, version_count, packet, cont_count):
     # Base64 encode the SCTE35 payload
     
     encoded_payload = scte35_payload
+    #print(encoded_payload)
     #encoded_payload = base64.b64encode(scte35_payload) 
     
 
@@ -326,8 +327,9 @@ def buildDSMCCPacket3E(scte35_payload, version_count, packet, cont_count):
     #encoded payload is the splice information from SCTE35
     
     
-    #8 is the CRC_32
-    dsmcc_len = 6 + len (encoded_payload) + 4   
+    #8 is the CRC_32 - shouldnt be included.
+    #dsmcc_len = 6 + len (encoded_payload) + 8 + 4   
+    dsmcc_len = 6 + len (encoded_payload) + 4  
     
     # 8 bits - Table ID
     # x3D means that section contains stream descriptors - [ISO/IEC 13818-6:1998  Table 9-3]
@@ -1150,7 +1152,15 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
             ss = int(currentTime[4:])
             packets = bytes([hh,mm,ss])
         elif dataChoice == 1:
-            packets = iteratorCount.to_bytes(1, 'big')
+            #packets = iteratorCount.to_bytes(1, 'big')
+            # Calculate the number of bytes required
+            num_bytes = (iteratorCount.bit_length() + 7) // 8
+
+            # Ensure a minimum of 1 byte
+            num_bytes = max(num_bytes, 1)
+
+            # Convert the integer to bytes
+            packets = iteratorCount.to_bytes(num_bytes, byteorder='big')
         else:
             packets = []
         
@@ -1162,7 +1172,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         """
         #print(f"data pid: {dataPID}")
         
-        #uncomment for custom pids
+        
         
         dataPIDIn = int(input("\nEnter PID for packets: "))
         dataPIDMinus = dataPIDIn - 1
@@ -1293,7 +1303,14 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
                         iteratorCount += 1
                         #if iterating, update the packets
                         if dataChoice == 1:
-                            packets = iteratorCount.to_bytes(1, 'big')
+                            # Calculate the number of bytes required
+                            num_bytes = (iteratorCount.bit_length() + 7) // 8
+
+                            # Ensure a minimum of 1 byte
+                            num_bytes = max(num_bytes, 1)
+
+                            # Convert the integer to bytes
+                            packets = iteratorCount.to_bytes(num_bytes, byteorder='big')
                         
                         #Update cont_count and version_count
                         cont_count += 1
