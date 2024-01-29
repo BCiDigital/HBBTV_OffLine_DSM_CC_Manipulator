@@ -905,7 +905,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         replace_table("intermediate.ts", pmt_pid, 'pmtXML.xml', output_file)
     
     #ELSE insert the DSMCC extra packet data
-    else:
+    elif choice == 3:
         #copy input to intermediate
         copy_ts_file(input_file, 'intermediate.ts')
         #get the period
@@ -990,11 +990,12 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         #convert string to packet[]
         packets = file_content.encode('utf-8')
         """
-        
+        #start iterator count
+        iteratorCount = 0
         #Option for data
         print("\nData Choice: ")
         print(f"0: Date")
-        print(f"1: YET TO ADD ")
+        print(f"1: Add Iterator")
         print(f"2: YET TO ADD")
         dataChoice = int(input("Enter index of choice: "))
         if dataChoice == 0:
@@ -1004,7 +1005,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
             ss = int(currentTime[4:])
             packets = bytes([hh,mm,ss])
         elif dataChoice == 1:
-            packets = []
+            packets = iteratorCount.to_bytes(1, 'big')
         else:
             packets = []
         
@@ -1136,7 +1137,18 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
                         
                         #dsmcc_packet = buildDSMCCPacket(packets, version_count, bytes.fromhex("FFFFFFFFFFFFFFFF"), cont_count)
                         #print(f"cont count: {cont_count2}")
+                        
+                        
+                         
+                        
                         dsmcc_packet = buildDSMCCPacket(packets, version_count, result, cont_count)
+                        
+                        #update iterator
+                        iteratorCount += 1
+                        #if iterating, update the packets
+                        if dataChoice == 1:
+                            packets = iteratorCount.to_bytes(1, 'big')
+                        
                         #Update cont_count and version_count
                         cont_count += 1
                         
@@ -1178,6 +1190,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         for i in range(0, num_packets, everyXPackets):
             #get nearest null packet (PID = 1FFF)
         """ 
+        #ELSE insert the DSMCC counter
             
         
         
