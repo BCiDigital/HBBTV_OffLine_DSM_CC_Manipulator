@@ -327,7 +327,7 @@ def buildDSMCCPacket3E(scte35_payload, version_count, packet, cont_count):
     
     
     #8 is the CRC_32
-    dsmcc_len = 6 + len (encoded_payload) + 8 + 4   
+    dsmcc_len = 6 + len (encoded_payload) + 4   
     
     # 8 bits - Table ID
     # x3D means that section contains stream descriptors - [ISO/IEC 13818-6:1998  Table 9-3]
