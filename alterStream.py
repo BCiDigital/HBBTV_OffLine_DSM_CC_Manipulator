@@ -1312,7 +1312,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
                         file.write(dsmcc_packet)
                         hex_string = binascii.hexlify(dsmcc_packet).decode('utf-8')
 
-                        print(hex_string)
+                        #print(hex_string)
                         
                         #output information
                         packetInsertionNumber = (packetCount*everyXPackets)+jitterCount
