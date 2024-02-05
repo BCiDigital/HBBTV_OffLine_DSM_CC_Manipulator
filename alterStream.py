@@ -162,8 +162,10 @@ def buildDSMCCPacket(scte35_payload, version_count, packet, cont_count):
     #print(packet[1:3])
     
     #8 bits
+    
     byte4 = cont_count | 0x10
     dsmcc_packet += byte4.to_bytes (1, 'big')
+    
     
     
     
@@ -435,6 +437,7 @@ def replace_scte35(input_file, output_file, scte35_pid, replaceNull):
     print( "\nSearching for SCTE35 Payload on PID: ", scte35_pid)
     with open(input_file, 'rb') as input_stream, open (output_file, 'wb') as output_stream:
         while True:
+            
             sync_byte = input_stream.read(1)
 
 
@@ -465,9 +468,15 @@ def replace_scte35(input_file, output_file, scte35_pid, replaceNull):
                     extractSCTEInformation(scte35_payload)
                     #Create DSMCC packet
                     dsmcc_packet = buildDSMCCPacket(scte35_payload, version_count, packet, cont_count)
+                    
+                    
+                    #print(binascii.hexlify(dsmcc_packet).decode('utf-8'))
                     #Update cont_count
+                    
                     cont_count += 1
                     cont_count &= 0x0F
+                    
+                    
                     events_replaced += 1
                     
                     # Write the DSM-CC packet to the output stream
@@ -489,19 +498,23 @@ def replace_scte35(input_file, output_file, scte35_pid, replaceNull):
                         #print ("SCTE Detected, len 17")
                         events_notreplaced +=1
                         #SEND STUFFED PACKET
-                        #sendStuffedPacket(output_stream)
+                        sendStuffedPacket(output_stream)
                         #send original packet
-                        output_stream.write(packet)
+                        #output_stream.write(packet)
                     
                     else:
                         #Still converting null splice into DSM-CC
                         #Create DSMCC packet
                         dsmcc_packet = buildDSMCCPacket(scte35_payload, version_count, packet, cont_count)
+                        #HERE
+                        print(binascii.hexlify(dsmcc_packet).decode('utf-8'))
+                        #print(cont_count)
                         #Update cont_count
                         cont_count += 1
                         cont_count &= 0x0F
                         events_replaced += 1
                         output_stream.write (dsmcc_packet)
+                        
                     
                     
             else:
