@@ -14,7 +14,7 @@ import pkgutil
 import re
 import math
 
-applicationVersionNumber = "1.1.1"
+applicationVersionNumber = "1.1.2"
 version_count=1
 cont_count = 1
 
@@ -257,12 +257,12 @@ def buildDSMCCPacket(scte35_payload, version_count, packet, cont_count):
 
     
 
-def buildDSMCCPacket3E(scte35_payload, version_count, packet, cont_count):
+def buildDSMCCPacket3E(privatePayload, version_count, packet, cont_count):
     """
     Function to build a DSMCC Payload from the Payload - with code 3E
     
     Arguments:
-    scte35_payload (packet[]): The payload packets of the SCTE35
+    privatePayload (packet[]): The payload packets of the SCTE35
     version_count (int): The version of the DSMCC payload
     packet (packet): The SCTE35 packet.
     cont_count (int): The continuity counter.
@@ -295,9 +295,9 @@ def buildDSMCCPacket3E(scte35_payload, version_count, packet, cont_count):
     """
     # Base64 encode the SCTE35 payload
     
-    encoded_payload = scte35_payload
-    #print(encoded_payload)
-    #encoded_payload = base64.b64encode(scte35_payload) 
+    encoded_payload = privatePayload
+    
+    #encoded_payload = base64.b64encode(privatePayload) 
     
 
 
@@ -1152,6 +1152,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         #convert string to packet[]
         packets = file_content.encode('utf-8')
         """
+        #ADD EXTRA DATA HERE, AS PACKETS VARIABLE
         #start iterator count
         iteratorCount = 0
         #Option for data
@@ -1160,6 +1161,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         print(f"1: Add Iterator")
         print(f"2: YET TO ADD")
         dataChoice = int(input("Enter index of choice: "))
+        
         if dataChoice == 0:
             currentTime = datetime.now().strftime('%H%M%S')
             hh = int(currentTime[:2])
