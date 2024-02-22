@@ -293,11 +293,11 @@ def buildDSMCCPacket3E(privatePayload, version_count, packet, cont_count):
     #add the SCTE35 payload to the private data byte
     dsm_descriptor += scte35_payload
     """
+    
+    
+    #encoded_payload = privatePayload
     # Base64 encode the SCTE35 payload
-    
-    encoded_payload = privatePayload
-    
-    #encoded_payload = base64.b64encode(privatePayload) 
+    encoded_payload = base64.b64encode(privatePayload) 
     
 
 
@@ -1320,6 +1320,8 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
                          
                         
                         dsmcc_packet = buildDSMCCPacket3E(packets, version_count, result, cont_count)
+                        #If 3D needed
+                        #dsmcc_packet = buildDSMCCPacket(packets, version_count, result, cont_count)
                         
                         #update iterator
                         iteratorCount += 1
@@ -1847,6 +1849,8 @@ if __name__ == "__main__":
        sys.exit(0)
     else: 
         processMultiple(input_file, output_file)
+        
+        
     #Delete intermediate files
     files_to_delete = ['pmtXML.xml', 'patXML.xml', 'dataXML.xml','tempTS.ts','intermediate.ts','intermediate-b.ts']
 
@@ -1863,8 +1867,7 @@ if __name__ == "__main__":
             # Delete the file
             os.remove(file_path)
             #print(f"Deleted {filename}")
-        else:
-            #print(f"{filename} does not exist")
+        
     """
     #os.remove("intermediate.ts")
     if os.path.exists("intermediate-b.ts"):
