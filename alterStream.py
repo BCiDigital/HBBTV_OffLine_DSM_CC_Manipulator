@@ -14,7 +14,7 @@ import pkgutil
 import re
 import math
 
-applicationVersionNumber = "1.1.0"
+applicationVersionNumber = "1.1.1"
 version_count=1
 cont_count = 1
 
@@ -309,6 +309,7 @@ def buildDSMCCPacket3E(scte35_payload, version_count, packet, cont_count):
     dsmcc_packet = bytes ([0x47])
     
     #Next 16 bits from the packet, contains:
+    #ISSUE IS HERE
     dsmcc_packet += packet [1:3]
     #print(packet[1:3])
     
@@ -354,6 +355,7 @@ def buildDSMCCPacket3E(scte35_payload, version_count, packet, cont_count):
     # TID Ext, do-it-now       ETSI TS 102 809 V1.2.1 / Section B32.  TID Ext = EventId 1 (14 bits), Bits 14/15 zero = 0x0001
     #16 bits - table_id_extension (do-it-now)
     dsmcc_packet += b'\x00\x01'
+    
     
     
     # Version 1 (RR/VVVVV/C)   RR / 5 BIts of Version number / Current/Next indicator (always 1)   Version 1 = 11000011 = C3
@@ -1199,7 +1201,12 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         hex_dataPID = '0x{:04x}'.format(dataPID)
         
         #for the packet
-        result = 'FF' + hex_dataPID[2:]  # Skip the '0x' prefix when concatenating
+        
+        #POSSIBLE ISSUE
+        
+        #result = 'FF' + hex_dataPID[2:]  # Skip the '0x' prefix when concatenating
+        
+        result = 'FF4' + hex_dataPID[3:]
         #print(result)
         #print(f"RESULT: {result}")
         result = bytes.fromhex(result)
@@ -1872,4 +1879,3 @@ if __name__ == "__main__":
     
     
    
-
