@@ -14,7 +14,7 @@ import pkgutil
 import re
 import math
 
-applicationVersionNumber = "1.0.0"
+applicationVersionNumber = "1.1.0"
 version_count=1
 cont_count = 1
 
@@ -185,8 +185,8 @@ def buildDSMCCPacket(scte35_payload, version_count, packet, cont_count):
     
     # 8 bits - Table ID
     # x3D means that section contains stream descriptors - [ISO/IEC 13818-6:1998  Table 9-3]
-    #dsmcc_packet += b'\x00\x3D'  
-    dsmcc_packet += b'\x3D'
+    dsmcc_packet += b'\x00\x3D'  
+    #dsmcc_packet += b'\x3D'
     
     #8 bits
     #1 bit: section_syntax_indicator
@@ -335,8 +335,8 @@ def buildDSMCCPacket3E(scte35_payload, version_count, packet, cont_count):
     
     # 8 bits - Table ID
     # x3D means that section contains stream descriptors - [ISO/IEC 13818-6:1998  Table 9-3]
-    #dsmcc_packet += b'\x00\x3E'  
-    dsmcc_packet += b'\x3E' 
+    dsmcc_packet += b'\x00\x3E'  
+    #dsmcc_packet += b'\x3E' 
     
     
     #8 bits
