@@ -14,7 +14,7 @@ import pkgutil
 import re
 import math
 
-applicationVersionNumber = "1.1.2"
+applicationVersionNumber = "1.1.1"
 version_count=1
 cont_count = 1
 
@@ -1848,6 +1848,23 @@ if __name__ == "__main__":
     else: 
         processMultiple(input_file, output_file)
     #Delete intermediate files
+    files_to_delete = ['pmtXML.xml', 'patXML.xml', 'dataXML.xml','tempTS.ts','intermediate.ts','intermediate-b.ts']
+
+    # Get the current directory
+    current_directory = os.getcwd()
+
+    # Iterate over the list of filenames
+    for filename in files_to_delete:
+        # Construct the full path to the file
+        file_path = os.path.join(current_directory, filename)
+        
+        # Check if the file exists
+        if os.path.exists(file_path):
+            # Delete the file
+            os.remove(file_path)
+            #print(f"Deleted {filename}")
+        else:
+            #print(f"{filename} does not exist")
     """
     #os.remove("intermediate.ts")
     if os.path.exists("intermediate-b.ts"):
