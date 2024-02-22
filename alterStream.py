@@ -181,7 +181,8 @@ def buildDSMCCPacket(scte35_payload, version_count, packet, cont_count):
     #12 as this is the length of the streamEventDescriptor without the private data bytes)
     
     
-    dsmcc_len = 6 + len (encoded_payload) + 4 + 12 
+    #dsmcc_len = 6 + len (encoded_payload) + 4 + 12 
+    dsmcc_len = 6 + len (encoded_payload) + 12 
     
     # 8 bits - Table ID
     # x3D means that section contains stream descriptors - [ISO/IEC 13818-6:1998  Table 9-3]
@@ -1319,9 +1320,9 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
                         
                          
                         
-                        dsmcc_packet = buildDSMCCPacket3E(packets, version_count, result, cont_count)
+                        #dsmcc_packet = buildDSMCCPacket3E(packets, version_count, result, cont_count)
                         #If 3D needed
-                        #dsmcc_packet = buildDSMCCPacket(packets, version_count, result, cont_count)
+                        dsmcc_packet = buildDSMCCPacket(packets, version_count, result, cont_count)
                         
                         #update iterator
                         iteratorCount += 1
