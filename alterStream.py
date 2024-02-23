@@ -14,7 +14,7 @@ import pkgutil
 import re
 import math
 
-applicationVersionNumber = "1.1.1"
+applicationVersionNumber = "1.1.2"
 version_count=1
 cont_count = 1
 
@@ -181,8 +181,8 @@ def buildDSMCCPacket(scte35_payload, version_count, packet, cont_count):
     #12 as this is the length of the streamEventDescriptor without the private data bytes)
     
     
-    #dsmcc_len = 6 + len (encoded_payload) + 4 + 12 
-    dsmcc_len = 6 + len (encoded_payload) + 12 
+    dsmcc_len = 6 + len (encoded_payload) + 4 + 12 
+    #dsmcc_len = 6 + len (encoded_payload) + 12 
     
     # 8 bits - Table ID
     # x3D means that section contains stream descriptors - [ISO/IEC 13818-6:1998  Table 9-3]
@@ -232,7 +232,8 @@ def buildDSMCCPacket(scte35_payload, version_count, packet, cont_count):
     dsmcc_packet += b'\x1a'
     
     #8 bits - Descriptor length (think this should be 10 + len(encoded_payload))
-    dsmcc_payload_len = len (encoded_payload) + 4
+    #dsmcc_payload_len = len (encoded_payload) + 4
+    dsmcc_payload_len = len (encoded_payload) + 10
     dsmcc_packet += (dsmcc_payload_len & 0x00FF).to_bytes (1, 'big') 
     
     
@@ -279,7 +280,7 @@ def buildDSMCCPacket3E(privatePayload, version_count, packet, cont_count):
     
     
     #DESCRIPTOR LIST SECTION - SPLICE INFORMATION - [A178-1r1_Dynamic-substitution-of-content  Table 3] - This information just goes before the SCTE35 data
-    """
+    
     #24 bits
     #8 bits: DVB_data_length
     #3 bits: reserved for future use
@@ -292,13 +293,13 @@ def buildDSMCCPacket3E(privatePayload, version_count, packet, cont_count):
     0                 # length of private dats
     ])
     #add the SCTE35 payload to the private data byte
-    dsm_descriptor += scte35_payload
-    """
+    dsm_descriptor += privatePayload
+    encoded_payload = base64.b64encode(dsm_descriptor) 
     
     
     #encoded_payload = privatePayload
     # Base64 encode the SCTE35 payload
-    encoded_payload = base64.b64encode(privatePayload) 
+    #encoded_payload = base64.b64encode(privatePayload) 
     
 
 
@@ -599,6 +600,7 @@ def replace_table(input_file, pid, tablexml, output_file):
         '-P', 'inject',
         '-p', str(pid),
         '-r', tablexml,
+        '-s',
         '-O', 'file', output_file
     ]
     subprocess.run(cmd, check=True)
@@ -629,6 +631,7 @@ def insert_table(input_file, pid, tablexml, reprate_ms, output_file):
         '-P', 'inject',
         '-p', str(pid),
         f'{tablexml}={reprate_ms}',
+        #'-s',
         '-O', 'file', output_file
     ]
     subprocess.run(cmd, check=True)
@@ -1756,7 +1759,7 @@ def processMultiple(input_file, output_file):
    
     #save_pmt_by_service_id("pmtXML.xml", service)
     process_ts_file(input_file, output_file, service, pmtPID)
-    print("\n\nAnother Channel? ")
+    print("\n\nAnother Process? ")
     print("0: No")
     print("1: Yes")
     more = int(input("Enter index of choice: "))
