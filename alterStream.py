@@ -1173,15 +1173,16 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
             ss = int(currentTime[4:])
             packets = bytes([hh,mm,ss])
         elif dataChoice == 1:
+            """
             #packets = iteratorCount.to_bytes(1, 'big')
             # Calculate the number of bytes required
             num_bytes = (iteratorCount.bit_length() + 7) // 8
 
             # Ensure a minimum of 1 byte
             num_bytes = max(num_bytes, 1)
-
+            """
             # Convert the integer to bytes
-            packets = iteratorCount.to_bytes(num_bytes, byteorder='big')
+            packets = iteratorCount.to_bytes(2, byteorder='big')
         else:
             packets = []
         
@@ -1331,14 +1332,15 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
                         iteratorCount += 1
                         #if iterating, update the packets
                         if dataChoice == 1:
+                            """
                             # Calculate the number of bytes required
                             num_bytes = (iteratorCount.bit_length() + 7) // 8
 
                             # Ensure a minimum of 1 byte
                             num_bytes = max(num_bytes, 1)
-
+                            """
                             # Convert the integer to bytes
-                            packets = iteratorCount.to_bytes(num_bytes, byteorder='big')
+                            packets = iteratorCount.to_bytes(2, byteorder='big')
                         
                         #Update cont_count and version_count
                         cont_count += 1
@@ -1764,8 +1766,8 @@ def processMultiple(input_file, output_file):
     print("1: Yes")
     more = int(input("Enter index of choice: "))
     if(more == 1):
-        getXML(output_file)
-        save_pat()
+        #getXML(output_file)
+        #save_pat()
         #Copy current output file to temp
         tempFile = "tempTS.ts"
         copy_ts_file(output_file, tempFile)
@@ -1786,11 +1788,15 @@ def copy_ts_file(source_file, destination_file):
     Returns:
     None
     """
+    command = f"tsp -I file \"{source_file}\" -O file \"{destination_file}\""
+    subprocess.run(command, check=True)
+    
+    """
     try:
         with open(source_file, 'rb') as source, open(destination_file, 'wb') as destination:
             # Read and copy the contents of the source TS file
             while True:
-                chunk = source.read(4096)  # Read in chunks
+                chunk = source.read(409600)  # Read in chunks
                 if not chunk:
                     break
                 destination.write(chunk)  # Write the chunk to the destination TS file
@@ -1799,7 +1805,7 @@ def copy_ts_file(source_file, destination_file):
         print("File not found error.")
     except Exception as e:
         print(f"An error occurred: {e}")
-
+    """
 
         
       
@@ -1856,7 +1862,7 @@ if __name__ == "__main__":
         
         
     #Delete intermediate files
-    files_to_delete = ['pmtXML.xml', 'patXML.xml', 'dataXML.xml','tempTS.ts','intermediate.ts','intermediate-b.ts']
+    files_to_delete = ['pmtXML.xml', 'aitXML.xml',  'patXML.xml', 'dataXML.xml','tempTS.ts','intermediate.ts','intermediate-b.ts']
 
     # Get the current directory
     current_directory = os.getcwd()
