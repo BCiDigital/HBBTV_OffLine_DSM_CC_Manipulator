@@ -1075,7 +1075,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         #copy input to intermediate
         copy_ts_file(input_file, 'intermediate.ts')
         #get the period
-        insertPeriod = int(input("\nEnter the insertion period (seconds): "))
+        insertPeriod = float(input("\nEnter the insertion period (seconds): "))
         
         # Get the file size
         file_size = os.path.getsize("intermediate.ts")
