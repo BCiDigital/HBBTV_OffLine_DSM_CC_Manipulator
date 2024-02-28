@@ -13,6 +13,7 @@ import xml.etree.ElementTree as ET
 import pkgutil
 import re
 import math
+import time
 
 applicationVersionNumber = "1.1.2"
 version_count=1
@@ -690,12 +691,15 @@ def findAvailablePIDs(file_path, pmtPID):
     #print(pids)
     intPID = int(pmtPID, 16)
     if (intPID+1) in pids:
-        # Get nearest PID over 891
+        # Get nearest PID
         found = False
-        i = 891
+        i = intPID+2
+        
         while found == False:
             if i in pids:
                 i+=1
+                if(i > 8191):
+                    i = 0
             else: 
                 found = True
                 return i
@@ -919,7 +923,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
             aitXML = (input("\nXML File Name: "))
             if not(aitXML.endswith('.xml')):
                 aitXML = aitXML+".xml"
-            print(f"Adding AIT Element to PMT")
+            print(f"Adding AIT Element to PMT on PID {aitPID}")
             insert_table('intermediate.ts', aitPID, aitXML, insertRate, 'intermediate-b.ts')
         else:
             #Input data
@@ -938,7 +942,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
             #CreateFile
             createAITXML(applicationID, organizationID, url, applicationProfile, applicationVersion, applicationName, initialPath)
             
-            print(f"\nAdding AIT Element to PMT")
+            print(f"\nAdding AIT Element to PMT on PID {aitPID}")
             insert_table('intermediate.ts', aitPID, 'aitXML.xml', insertRate, 'intermediate-b.ts')
         
        
@@ -1039,7 +1043,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
             aitXML = (input("\nXML File Name: "))
             if not(aitXML.endswith('.xml')):
                 aitXML = aitXML+".xml"
-            print(f"Adding AIT Element to PMT")
+            print(f"Adding AIT Element to PMT on PID {aitPID}")
             insert_table(input_file, aitPID, aitXML, insertRate, 'intermediate.ts')
         else:
             #Input data
@@ -1058,7 +1062,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
             #CreateFile
             createAITXML(applicationID, organizationID, url, applicationProfile, applicationVersion, applicationName, initialPath)
             
-            print(f"\nAdding AIT Element to PMT")
+            print(f"\nAdding AIT Element to PMT on PID {aitPID}")
             insert_table(input_file, aitPID, 'aitXML.xml', insertRate, 'intermediate.ts')
         
         
@@ -1847,12 +1851,12 @@ if __name__ == "__main__":
 
     
     datetime = datetime.now()
-    time = datetime.strftime("%Y%m%d%H%M%S")
+    cTime = datetime.strftime("%Y%m%d%H%M%S")
     
     input_file = argv[1]
     if not(input_file.endswith(".ts")):
         input_file = input_file + ".ts"
-    output_file = argv[1]+(f"_Processed_{time}.ts")
+    output_file = argv[1]+(f"_Processed_{cTime}.ts")
     
     print(f"Alter Stream Version: {applicationVersionNumber}\n")
     #Check for TS Duck
