@@ -1790,6 +1790,8 @@ def copy_ts_file(source_file, destination_file):
     """
     command = f"tsp -I file \"{source_file}\" -O file \"{destination_file}\""
     subprocess.run(command, check=True)
+    #sleep the function for 2 seconds 
+    time.sleep(2)
     
     """
     try:
