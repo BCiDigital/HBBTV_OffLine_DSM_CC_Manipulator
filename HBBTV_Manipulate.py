@@ -113,22 +113,20 @@ def extractSCTEInformation(scte35_payload):
     
 def buildDSMCCPacket(scte35_payload, version_count, packet, cont_count):
     """
-    Function to build a DSMCC Payload from the SCTE Payload
+    Function to build a DSMCC Payload from any Payload, although for real operation will be SCTE35
     
     Arguments:
     scte35_payload (packet[]): The payload packets of the SCTE35
-    version_count (int): The version of the DSMCC payload
-    packet (packet): The SCTE35 packet.
+    version_count (int): The version of the DSMCC payload (maintained outside this function)
+    packet (packet): The packet that this is replacing. Will typically be the SCTE35 packet, but could be a NULL packet.
+                     This is used to extract the appropriate packet header.   
     cont_count (int): The continuity counter.
     
     Returns:
-    Byte[]: DSMCC Packet
+    Byte[]: DSMCC Transport Packet
     """
-    """
-    print("v "+ str(version_count))
-    print("c "+str(cont_count))
-    """
-    #print ("\nBuilding Descriptor with SCTE payload")
+
+    #print ("\nBuilding Transport Packet containing DSM-CC Descriptor with payload")
     
     
     #DESCRIPTOR LIST SECTION - SPLICE INFORMATION - [A178-1r1_Dynamic-substitution-of-content  Table 3] - This information just goes before the SCTE35 data
@@ -149,10 +147,6 @@ def buildDSMCCPacket(scte35_payload, version_count, packet, cont_count):
 
     # Base64 encode the SCTE35 payload
     encoded_payload = base64.b64encode(dsm_descriptor) 
-
-
-   
-    
     
     #DATA IN BEFORE DSMCC SECTION FORMAT - STREAM DATA
     #8 bits
@@ -168,10 +162,6 @@ def buildDSMCCPacket(scte35_payload, version_count, packet, cont_count):
     dsmcc_packet += byte4.to_bytes (1, 'big')
     
     
-    
-    
-    
-    
     #DSMCC PACKET SECTION - [ISO/IEC 13818-6:1998  Table 9-2]
     
     #Length of DSM-CC Packet
@@ -179,6 +169,7 @@ def buildDSMCCPacket(scte35_payload, version_count, packet, cont_count):
     
     #6 (should be 5) as this is the data after the dsmcc_section_length field and before we put the dsmcc descriptor field in
     #encoded payload is the splice information from SCTE35
+
     #12 as this is the length of the streamEventDescriptor without the private data bytes)
     
     
@@ -226,8 +217,6 @@ def buildDSMCCPacket(scte35_payload, version_count, packet, cont_count):
     dsmcc_packet += b'\x00\x00'
 
     
-    
-    
     #STREAM EVENT DESCRIPTOR SECTION - [ISO/IEC 13818-6:1998  Table 8-6]
     #8 bits - descriptorTag - x1a = 26 which is Stream Event Descriptor
     dsmcc_packet += b'\x1a'
@@ -245,7 +234,7 @@ def buildDSMCCPacket(scte35_payload, version_count, packet, cont_count):
     dsmcc_packet += b'\x00\x01\xFF\xFF\xFF\xFE\x00\x00\x00\x00'
 
     #THE PRIVATE DATA BYTES THE SCTE SECTION - Add the SCTE35 payload into the DSMCC Packet
-    dsmcc_packet += encoded_payload # DSM-CC Descriptor - SCTE35 payload
+    dsmcc_packet += encoded_payload # DSM-CC Descriptor - "SCTE35" payload
     
     
     
@@ -259,7 +248,9 @@ def buildDSMCCPacket(scte35_payload, version_count, packet, cont_count):
     return(dsmcc_packet)
 
     
-
+# This function is identical to the one above, but uses a descriptor of type 3E.   It's only left here because
+# there were some minor variations in layout, and length fields, which may be wrong, but it's still here for 
+# reference  
 def buildDSMCCPacket3E(privatePayload, version_count, packet, cont_count):
     """
     Function to build a DSMCC Payload from the Payload - with code 3E
@@ -410,17 +401,16 @@ def buildDSMCCPacket3E(privatePayload, version_count, packet, cont_count):
     dsmcc_packet += b'\xFF' * (188-len (dsmcc_packet))
 
     return(dsmcc_packet)
+
     
     
     
-    
-    
-def replace_scte35(input_file, output_file, scte35_pid, replaceNull):
+def replace_scte35(input_file, output_file, scte35_pid, replaceSpliceNull):
     """
     A function that replaces SCTE35 packets in a Transport Stream with DSMCC ones.
     
     Parameters:
-    input_file (String): The name of the file containig the input.
+    input_file (String): The name of the file containing the input.
     output_file (String): The name of the file for the output.
     scte35_pid (int): The PID of the SCTE packets.
     replaceNull(boolean): The option to replace null packets
@@ -497,8 +487,8 @@ def replace_scte35(input_file, output_file, scte35_pid, replaceNull):
                     version_count += 1
                 #If SCTE is null    
                 else:
-                    #If replaceNUll is true or false
-                    if replaceNull==False:
+                    #If replaceSpliceNull is true or false
+                    if replaceSpliceNull==False:
                         #Not converting null splice into DSM-CC
                         #print ("SCTE Detected, len 17")
                         events_notreplaced +=1
