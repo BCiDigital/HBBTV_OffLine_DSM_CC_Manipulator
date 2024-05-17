@@ -7,7 +7,7 @@ import binascii
 import subprocess
 import io
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, date
 import xml.etree.ElementTree as ET
 #import hexdump
 import pkgutil
@@ -15,12 +15,14 @@ import re
 import math
 import time
 
-applicationVersionNumber = "1.2.0"
+applicationVersionNumber = "2.0.0"
 version_count=1
 cont_count = 1
 
 version_count2=1
 cont_count2 = 1
+
+bypassbase64 = 0
 
 def calculate_section_crc(section):
     """
@@ -111,7 +113,7 @@ def extractSCTEInformation(scte35_payload):
     
     
     
-def buildDSMCCPacket(scte35_payload, version_count, packet, cont_count):
+def buildDSMCCPacket(scte35_payload, version_count, packet, cont_count, nobase64):
     """
     Function to build a DSMCC Payload from any Payload, although for real operation will be SCTE35
     
@@ -146,7 +148,10 @@ def buildDSMCCPacket(scte35_payload, version_count, packet, cont_count):
     dsm_descriptor += scte35_payload
 
     # Base64 encode the SCTE35 payload
-    encoded_payload = base64.b64encode(dsm_descriptor) 
+    if nobase64 == 0:
+        encoded_payload = base64.b64encode(dsm_descriptor)
+    else:
+        encoded_payload = dsm_descriptor
     
     #DATA IN BEFORE DSMCC SECTION FORMAT - STREAM DATA
     #8 bits
@@ -462,7 +467,7 @@ def replace_scte35(input_file, output_file, scte35_pid, replaceSpliceNull):
                     #Extract SCTE35 information
                     extractSCTEInformation(scte35_payload)
                     #Create DSMCC packet
-                    dsmcc_packet = buildDSMCCPacket(scte35_payload, version_count, packet, cont_count)
+                    dsmcc_packet = buildDSMCCPacket(scte35_payload, version_count, packet, cont_count, 0)
                     
                     
                     #print(binascii.hexlify(dsmcc_packet).decode('utf-8'))
@@ -500,7 +505,7 @@ def replace_scte35(input_file, output_file, scte35_pid, replaceSpliceNull):
                     else:
                         #Still converting null splice into DSM-CC
                         #Create DSMCC packet
-                        dsmcc_packet = buildDSMCCPacket(scte35_payload, version_count, packet, cont_count)
+                        dsmcc_packet = buildDSMCCPacket(scte35_payload, version_count, packet, cont_count, 0)
                         #HERE
                         print(binascii.hexlify(dsmcc_packet).decode('utf-8'))
                         #print(cont_count)
@@ -630,15 +635,15 @@ def insert_table(input_file, pid, tablexml, reprate_ms, output_file):
 
 
 
-def findAvailablePIDs(file_path, pmtPID):
+def findAvailablePIDs(file_path, basePID):
     """
-    A function to find the best PID for the AIT 
+    A function to find an available PID 
     
     Parameters:
-    pmt_pid(string): The hex of the PMT PID
+    base_pid(string): The hex of the base PID to try
     
     Returns:
-    pid(int): The PID to use for the AIT.
+    pid(int): The PID to use.
     """
     pids = []
     with open(file_path, 'r+b') as file:
@@ -679,7 +684,7 @@ def findAvailablePIDs(file_path, pmtPID):
                         pids.append(hexNext)
                 """    
     #print(pids)
-    intPID = int(pmtPID, 16)
+    intPID = int(basePID, 16)
     if (intPID+1) in pids:
         # Get nearest PID
         found = False
@@ -865,7 +870,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
     print("1: Insert AIT")
     print("2: Replace SCTE-35 with DSM-CC and Insert AIT")
     print("3: Insert DSM-CC Data")
-    choice = int(input("Enter index of process choice: "))
+    choice = int(input("Enter choice: "))
     
     #IF BOTH
     if choice == 2:
@@ -890,9 +895,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
             
         # Replace the SCTE Elements with DSMCC ones
         print(f"Replacing SCTE Element with DSMCC in PMT")
-        replaceSCTEElement("pmtXML.xml", scte_pid)
-         
-            
+        replaceSCTEElement("pmtXML.xml", scte_pid)    
         
         #insert rate
         insertRate = (input("\nAIT Insert Rate (default is 1000): ")) 
@@ -903,13 +906,14 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         hex_aitPID = '0x{:04x}'.format(aitPID)
         
         #Insert AIT Table
-        
-        print("\nChoose AIT Insertion Method: ")
+        print("\nChoose AIT Insertion Method (default is XML): ")
         print("0: From XML")
         print("1: Manual")
-        choice2 = int(input("Enter index of AIT choice: "))
+        choice2 = (input("AIT choice: "))
+        if not choice2:
+            choice2 = 0
         
-        if choice2 == 0:
+        if choice2 != "1": 
             aitXML = (input("\nXML File Name: "))
             if not(aitXML.endswith('.xml')):
                 aitXML = aitXML+".xml"
@@ -936,10 +940,6 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
             insert_table('intermediate.ts', aitPID, 'aitXML.xml', insertRate, 'intermediate-b.ts')
         
        
-        #Make new PMT
-        
-        
-        
         #Add the AIT to the pmt
         addAITComponentElement("pmtXML.xml", hex_aitPID)
         
@@ -960,9 +960,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
             else:
                 replaceChoice = False   
         
-        
-        
-        
+ 
     #If just SCTE    
     elif choice == 0:
         # Replace SCTE35 packets with DSMCC 
@@ -1019,17 +1017,20 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         insertRate = (input("\nAIT Insert Rate (default is 1000): ")) 
         if not insertRate:
             insertRate = 1000
+            
         #find available PIDs
         aitPID = findAvailablePIDs(input_file, pmt_pid)
         hex_aitPID = hex_aitPID = '0x{:04x}'.format(aitPID)
         #Insert AIT Table
         
-        print("\nChoose AIT Insertion Method: ")
+        print("\nChoose AIT Insertion Method (default is XML): ")
         print("0: From XML")
         print("1: Manual")
-        choice2 = int(input("Enter index of AIT choice: "))
+        choice2 = (input("AIT choice: "))
+        if not choice2:
+            choice2 = 0
         
-        if choice2 == 0:
+        if choice2 != "1":
             aitXML = (input("\nXML File Name: "))
             if not(aitXML.endswith('.xml')):
                 aitXML = aitXML+".xml"
@@ -1068,21 +1069,26 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
     elif choice == 3:
         #copy input to intermediate
         copy_ts_file(input_file, 'intermediate.ts')
-        #get the period
-        insertPeriod = float(input("\nEnter the insertion period (seconds): "))
+
+        #Option for data
+        print("\nDSM Insert Mode: ")
+        print(f"0: Add Date")
+        print(f"1: Add Iterator")
+        print(f"2: Capability EVENT Sequence")
+        print(f"3: Capability EVENT Sequence with BREAKs")
         
+        dsm_insert_mode = int(input("Option: "))
+
+        
+        #get the period
+        period = (input("\nEnter the insertion period (seconds - default 1s): "))
+        if not period:
+            period = "1"
+        insertPeriod = (float (period))
         # Get the file size
         file_size = os.path.getsize("intermediate.ts")
         #convert Bytes to bits
         file_size_bits = file_size * 8
-        """
-        #from the PMT get the maximum bitrate
-        bitrate = getMaximumBitrate()
-        #remove commas
-        bitrate = bitrate.replace(',','')
-        # Convert the string to an integer
-        bitrate = int(bitrate)
-        """
         
         #Just get the actual bitrate
         # Run the tsbitrate command and capture the output
@@ -1097,17 +1103,6 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
             bitrate = int(bitrate_str.replace(',', ''))
             #print(bitrate)
         
-        """
-        print(f"filesize bits {file_size_bits}")
-        print(f"filesize bytes {file_size}")
-        print(f"filesize packets {(file_size)/188}")
-        print(f"bitrate {bitrate}")
-        """
-        """
-        #find the seconds of the file
-        fileSeconds = file_size / 29772800 
-        print(f"file length = {fileSeconds}")
-        """
         #figure out proportions
         #file time
         #fileSeconds = file_size_bits / 6000124
@@ -1120,85 +1115,32 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         packetsInFile = math.ceil((file_size)/188)
         #print(f"packetsInFile {packetsInFile}")
         everyXPackets = int(proportion * packetsInFile)
-        """
-        #convert this into packets - each packet is 188 bytes.
-        #work out number of bits in x seconds
-        bitsInSeconds = bitrate * insertPeriod
-        #divide by packet size
-        everyXPackets = bitsInSeconds // (188*8)
-        """
+
         #print(f"new one every {everyXPackets} packets.")
         
         
-        
         #Option for Jitter (replacing packet intervals)
-        print("\nJitter Choice: ")
+        print("Jitter Management:")
         print(f"0: Account for jitter (insert packets as close to {insertPeriod}s in the stream)")
         print(f"1: Don't account for jitter (insert packets {insertPeriod}s after the last packet insertion) ")
-        jitterChoice = int(input("Enter index of choice: "))
-        
-        
-        """
-        #get the file name
-        fileName = input("\nEnter the name of the text file containing the data: ")
-        if not(fileName.endswith('.txt')):
-                fileName = fileName+".txt"
-        #get the data from the file
-        with open(fileName, 'r') as file:
-            # Read the content of the file
-            file_content = file.read()
-        #convert string to packet[]
-        packets = file_content.encode('utf-8')
-        """
-        #ADD EXTRA DATA HERE, AS PACKETS VARIABLE
-        #start iterator count
-        iteratorCount = 0
-        #Option for data
-        print("\nData Choice: ")
-        print(f"0: Date")
-        print(f"1: Add Iterator")
-        print(f"2: Sequence")
-        dataChoice = int(input("Enter index of choice: "))
-        
-        if dataChoice == 0:
-            currentTime = datetime.now().strftime('%H%M%S')
-            hh = int(currentTime[:2])
-            mm = int(currentTime[2:4])
-            ss = int(currentTime[4:])
-            packets = bytes([hh,mm,ss])
-        elif dataChoice == 1:
-            """
-            #packets = iteratorCount.to_bytes(1, 'big')
-            # Calculate the number of bytes required
-            num_bytes = (iteratorCount.bit_length() + 7) // 8
+        choice = (input("Option: "))
+        if not choice:
+            choice = "0"
 
-            # Ensure a minimum of 1 byte
-            num_bytes = max(num_bytes, 1)
-            """
-            # Convert the integer to bytes
-            packets = iteratorCount.to_bytes(2, byteorder='big')
+        manageJitter = (int (choice))
+
+        #Select a suitable PID
+        entry = input("\nEnter PID for packets (default - autoselect above 32): ")
+        if len (entry) == 0:
+            dataPIDIn = 32
         else:
-            eventime = float(input("\nEnter the Event Time (seconds): "))
-            packets = iteratorCount.to_bytes(2, byteorder='big')
-        
-        
-        
-        #find new PID for data packet, generated pid
-        """
-        dataPID = findAvailablePIDs(input_file, pmt_pid)
-        """
-        #print(f"data pid: {dataPID}")
-        
-        
-        
-        dataPIDIn = int(input("\nEnter PID for packets: "))
+            dataPIDIn = int(entry)
+            
         dataPIDMinus = dataPIDIn - 1
         dataPID = findAvailablePIDs(input_file, hex(dataPIDMinus))
         if(dataPID != dataPIDIn):
-            print(f"PID {dataPIDIn} not available, PID {dataPID} used instead.")
-        
-        
-        
+            print(f"PID {dataPIDIn} not available")
+        print (f"PID {dataPID} autoselected")  
         
         hex_dataPID = '0x{:04x}'.format(dataPID)
         
@@ -1213,42 +1155,40 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         #print(f"RESULT: {result}")
         result = bytes.fromhex(result)
         #print(result)
-        
-        
-        
-        """
-        #Append the file data into a dsmcc packet.
-        global version_count
-        global cont_count
-        #dsmcc_packet = buildDSMCCPacket(packets, version_count, bytes.fromhex("FFFFFFFFFFFFFFFF"), cont_count)
-        dsmcc_packet = buildDSMCCPacket(packets, version_count, result, cont_count)
-        #Update cont_count and version_count
-        cont_count += 1
-        print(f"cont count: {cont_count}")
-        cont_count &= 0x0F
-        
-        version_count += 1
-        """
-        
-        
-        
+
         #update the PMT
         addDSMCCComponentElement("pmtXML.xml", hex_dataPID)
 
-        
-        
         #add in at intervals
+        #ADD EXTRA DATA HERE, AS PACKETS VARIABLE
+        #start iterator count
+        dsm_cc_count_event_counter = 0
+        dsm_cc_spot_event_counter = 1
+        dsm_cc_version_count = 0
+        dsm_cc_cont_count = 0
+        dsm_cc_event_cont_count = 0
         
+        insertTime = datetime.combine (date.today(), datetime.min.time())
         # Get the file size
         file_size = os.path.getsize("intermediate.ts")
         # Calculate the estimated number of TS packets
         num_packets = packetsInFile
         print(f"Every {insertPeriod} seconds in a file of size {int(fileSeconds)} seconds is {int(fileSeconds // insertPeriod)} equally spaced insertions")
         print(f"Every {everyXPackets} packets in a file of size {num_packets} packets is {num_packets // everyXPackets} equally spaced insertions")
+
+        # Calculate where to insert the SPOT events in the stream at first and third quartiles (insert two events per stream)
+        total_packet_insertions = num_packets // everyXPackets
+        if dsm_insert_mode == 3:
+            first_spot_event_location = (int)(total_packet_insertions * 0.25)
+            second_spot_event_location = (int)(total_packet_insertions * 0.75)
+            print(f"Inserting Spot Events at Packet {first_spot_event_location} and packet {second_spot_event_location}")
+        else:
+            first_spot_event_location = 0
+            second_spot_event_location = 0           
         
         packet_size = 188
         pid_mask = 0x1FFF
-        target_pid = 0x1FFF
+        null_pid = 0x1FFF
         file_path = "intermediate.ts"
         
         with open(file_path, 'r+b') as file:
@@ -1258,8 +1198,6 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
             while True:
                 # Read and process the current packet
                 packet_data = file.read(packet_size)
-                
-                
                 
                 #print("Reading packet")
 
@@ -1277,7 +1215,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
                 
                 # Seek everyXpackets
                 #if we are accounting for jitter, take away the jitter packets from the seek.
-                if jitterChoice == 0:
+                if manageJitter == 0:
                     file.seek((packet_size * (everyXPackets - 1))-(jitterCount*188), os.SEEK_CUR)
                 else:
                     file.seek(packet_size * (everyXPackets - 1), os.SEEK_CUR)
@@ -1286,16 +1224,10 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
                 #increase packetCount
                 packetCount += 1
 
-                # Find the nearest packet on target_pid
-                global version_count
-                global cont_count
-                
-                
                 #reset the jitter count
                 jitterCount = 1
                 while True:
                     next_packet_data = file.read(packet_size)
-                    
                     
                     if not next_packet_data:
                         break
@@ -1306,58 +1238,38 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
                         print("SYNC ERROR - PACKETS MISALIGNED")
                         break
                     next_pid = struct.unpack('>H', next_packet_data[1:3])[0] & pid_mask
-                    #print(next_pid)
-                    #print(next_pid)
-                    if next_pid == target_pid:
-                       
+
+                    if next_pid == null_pid:
                         #create new DSMCC packet
-                        #Append the file data into a dsmcc packet.
-                        
-                        #dsmcc_packet = buildDSMCCPacket(packets, version_count, bytes.fromhex("FFFFFFFFFFFFFFFF"), cont_count)
-                        #print(f"cont count: {cont_count2}")
-                        
-                        
-                         
-                        
-                        #dsmcc_packet = buildDSMCCPacket3E(packets, version_count, result, cont_count)
-                        #If 3D needed
-                        dsmcc_packet = buildDSMCCPacket(packets, version_count, result, cont_count)
-                        
-                        #update iterator
-                        iteratorCount += 1
-                        #if iterating, update the packets
-                        if dataChoice = 1:
-                            """
-                            # Calculate the number of bytes required
-                            num_bytes = (iteratorCount.bit_length() + 7) // 8
-
-                            # Ensure a minimum of 1 byte
-                            num_bytes = max(num_bytes, 1)
-                            """
-                            # Convert the integer to bytes
-                            packets = iteratorCount.to_bytes(2, byteorder='big')
+                        #update the payload for the next packet
+                        if dsm_insert_mode == 0:
+                            currentTime = datetime.now().strftime('%H%M%S')
+                            hh = int(currentTime[:2])
+                            mm = int(currentTime[2:4])
+                            ss = int(currentTime[4:])
+                            next_inserted_payload = bytes([hh,mm,ss])
                             
-                        if dataChoice = 2:
-                            """
-                            # Calculate the number of bytes required
-                            num_bytes = (iteratorCount.bit_length() + 7) // 8
-
-                            # Ensure a minimum of 1 byte
-                            num_bytes = max(num_bytes, 1)
-                            """
+                        if dsm_insert_mode == 1:
                             # Convert the integer to bytes
-                            packets = iteratorCount.to_bytes(2, byteorder='big')
+                            next_inserted_payload = dsm_cc_count_event_counter.to_bytes(2, byteorder='big')
+                            dsm_cc_count_event_counter += 1
                             
-                        #Update cont_count and version_count
-                        cont_count += 1
-                        
-                        cont_count &= 0x0F
-                        
-                        version_count += 1
-                        
-                        
+                        if dsm_insert_mode == 2 or dsm_insert_mode == 3:
+                            #event_string = "<EVENT>"
+                            insertTime = insertTime + timedelta (0,insertPeriod)
+                            if (packetCount == first_spot_event_location or packetCount == second_spot_event_location):
+                                payload = "<EVENT TYPE=SPOT><CONTINUITY COUNT=" + str (dsm_cc_event_cont_count) + "><EVENTID=1000" + str (dsm_cc_spot_event_counter) + "><SPOT=" + str (dsm_cc_spot_event_counter) + "><DURATION=30><TIME=" + insertTime.strftime('%H%M%S')+ ">"
+                                dsm_cc_spot_event_counter += 1                              
+                            else:
+                                payload = "<EVENT TYPE=COUNT><CONTINUITY COUNT=" + str (dsm_cc_event_cont_count) + "><COUNT=" + str (dsm_cc_count_event_counter) + "><TIME=" + insertTime.strftime('%H%M%S')+ ">"
+                                dsm_cc_count_event_counter += 1
 
-                        
+                            #print (payload)
+                            next_inserted_payload = bytes (payload, 'utf-8')
+                                                   
+                        dsmcc_packet = buildDSMCCPacket(next_inserted_payload, dsm_cc_version_count, result, dsm_cc_cont_count, bypassbase64)
+
+                     
                         # Seek back to the beginning of the found packet
                         file.seek(-packet_size, os.SEEK_CUR)
 
@@ -1366,20 +1278,23 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
                         hex_string = binascii.hexlify(dsmcc_packet).decode('utf-8')
 
                         #print(hex_string)
-                        
-                        #output information
+
                         packetInsertionNumber = (packetCount*everyXPackets)+jitterCount
                         #convert to time
                         proportionPacket = packetInsertionNumber / packetsInFile
                         proportionTime = proportionPacket * fileSeconds
                         
                         print(f"Packet {packetCount} inserted at {packetInsertionNumber} packets ({proportionTime} seconds)")
-                        
 
                         # Seek everyXpackets again (correcting the offset)
                         #file.seek(packet_size * (everyXPackets - 1), os.SEEK_CUR)
                         #print(f"SEEKING {everyXPackets} packets, {packet_size * (everyXPackets - 1)} bytes")
 
+                        #Update cont_count and dsm_cc_version_count
+                        dsm_cc_cont_count += 1                    
+                        dsm_cc_cont_count &= 0x0F  
+                        dsm_cc_version_count += 1
+                        dsm_cc_event_cont_count +=1
                         break
                     else:
                         jitterCount += 1
@@ -1388,14 +1303,6 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         print(f"Replacing old PMT with new PMT")
         replace_table("intermediate.ts", pmt_pid, 'pmtXML.xml', output_file)
         os.remove("intermediate.ts")
-        """
-        for i in range(0, num_packets, everyXPackets):
-            #get nearest null packet (PID = 1FFF)
-        """ 
-        #ELSE insert the DSMCC counter
-            
-        
-        
 
     #Delete intermediate files
     """
@@ -1770,7 +1677,11 @@ def processMultiple(input_file, output_file):
     print("\n\nAnother Process? ")
     print("0: No")
     print("1: Yes")
-    more = int(input("Enter index of choice: "))
+    choice = (input("Select: "))
+    if not choice:
+        more = 0
+    else:
+        more = 1
     if(more == 1):
         #getXML(output_file)
         #save_pat()
