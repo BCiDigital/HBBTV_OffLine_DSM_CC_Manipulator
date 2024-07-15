@@ -15,7 +15,7 @@ import re
 import math
 import time
 
-applicationVersionNumber = "2.2.0"
+applicationVersionNumber = "2.3.0"
 version_count=1
 cont_count = 1
 
@@ -1087,7 +1087,8 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         print(f"1: Add Iterator")
         print(f"2: Capability EVENT Sequence")
         print(f"3: Capability EVENT Sequence with SPOTSs")
-        print(f"4: EVENT Sequence with Emulated BREAKs")       
+        print(f"4: EVENT Sequence with Emulated BREAKs") 
+        print(f"5: EVENT Sequence with Emulated BREAKs, and EVENT Counter")           
         dsm_insert_mode = int(input("Option: "))
 
         
@@ -1097,7 +1098,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
             period = "1"
 
         insertPeriod = (float (period))
-        if (dsm_insert_mode == 4 and insertPeriod != 1):
+        if ((dsm_insert_mode == 4 or dsm_insert_mode == 5) and insertPeriod != 1):
             insertPeriod = 1
             
         # Get the file size
@@ -1137,7 +1138,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         
         
         #Option for Jitter (replacing packet intervals)
-        if (dsm_insert_mode != 4):
+        if (dsm_insert_mode != 4 and dsm_insert_mode != 5):
             print("Jitter Management:")
             print(f"0: Account for jitter (insert packets as close to {insertPeriod}s in the stream)")
             print(f"1: Don't account for jitter (insert packets {insertPeriod}s after the last packet insertion) ")
@@ -1151,7 +1152,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         
       
         # Build Break Insertion Pattern
-        if (dsm_insert_mode == 4):
+        if (dsm_insert_mode == 4 or dsm_insert_mode == 5):
             break_pattern = [30, 30, 40, 20, 10, 50]
             break_packet_pattern = [0,1,2,3,4,5]
             break_packet_pattern [0] = 10 * everyXPackets  # Start 10 seconds in 
@@ -1217,7 +1218,8 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
             print(f"Inserting Spot Events at Packet {first_spot_event_location} and packet {second_spot_event_location}")
         elif dsm_insert_mode ==4:
             print(f"Inserting Full BREAK Spot Events at Packets {break_packet_pattern[0]}, {break_packet_pattern[1]}, {break_packet_pattern[2]}, {break_packet_pattern[3]}, {break_packet_pattern[4]}, {break_packet_pattern[5]}")
-        
+        elif dsm_insert_mode == 5:
+             print(f"Inserting EVENT COUNTER with Full BREAK Spot Events at Packets {break_packet_pattern[0]}, {break_packet_pattern[1]}, {break_packet_pattern[2]}, {break_packet_pattern[3]}, {break_packet_pattern[4]}, {break_packet_pattern[5]}")
         else:
             first_spot_event_location = 0
             second_spot_event_location = 0           
@@ -1231,6 +1233,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
             #packet count
             packetCount = 0
             jitterCount = 1
+            this_packet_type = "NULL"
             while True:
                 # Read and process the current packet
                 packet_data = file.read(packet_size)
@@ -1284,32 +1287,43 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
                             mm = int(currentTime[2:4])
                             ss = int(currentTime[4:])
                             next_inserted_payload = bytes([hh,mm,ss])
+                            this_packet_type = "TIME"
                             
                         if dsm_insert_mode == 1:
                             # Convert the integer to bytes
                             next_inserted_payload = dsm_cc_count_event_counter.to_bytes(2, byteorder='big')
+                            this_packet_type = "COUNTER"
                             dsm_cc_count_event_counter += 1
+                            payload="X"
                             
                         if dsm_insert_mode == 2 or dsm_insert_mode == 3:
                             #event_string = "<EVENT>"
                             insertTime = insertTime + timedelta (0,insertPeriod)
                             if (packetCount == first_spot_event_location or packetCount == second_spot_event_location):
                                 payload = "<EVENT TYPE=SPOT><CONTINUITY COUNT=" + str (dsm_cc_event_cont_count) + "><EVENTID=1000" + str (dsm_cc_spot_event_counter) + "><SPOT=" + str (dsm_cc_spot_event_counter) + "><DURATION=30><TIME=" + insertTime.strftime('%H%M%S')+ ">"
-                                dsm_cc_spot_event_counter += 1                              
+                                dsm_cc_spot_event_counter += 1
+                                this_packet_type = "SPOT EVENT"                                
                             else:
                                 payload = "<EVENT TYPE=COUNT><CONTINUITY COUNT=" + str (dsm_cc_event_cont_count) + "><COUNT=" + str (dsm_cc_count_event_counter) + "><TIME=" + insertTime.strftime('%H%M%S')+ ">"
+                                this_packet_type = "COUNT EVENT"
                                 dsm_cc_count_event_counter += 1
                             #print (payload)
                             next_inserted_payload = bytes (payload, 'utf-8')
                         
-                        if dsm_insert_mode == 4:
+                        if dsm_insert_mode == 4 or dsm_insert_mode == 5:
                             insertTime = insertTime + timedelta (0,insertPeriod)
                             if (break_spot < 6 and packetCount*everyXPackets >= break_packet_pattern [break_spot]):
                                 payload = "<EVENT TYPE=SPOT><CONTINUITY COUNT=" + str (dsm_cc_event_cont_count) + "><EVENTID=1000" + str (break_spot) + "><SPOT=" + str (break_spot) + "><DURATION=" + str (break_pattern[break_spot]) + "><TIME=" + insertTime.strftime('%H%M%S')+ ">"
                                 break_spot += 1
                                 dsm_cc_count_event_counter += 1
+                                this_packet_type = "BREAKSPOT EVENT"
                             else:
-                                payload = ""
+                                if dsm_insert_mode == 4:
+                                    payload = ""
+                                    this_packet_type = "EMPTY"
+                                else:
+                                    payload = "<EVENT TYPE=COUNT><CONTINUITY COUNT=" + str (dsm_cc_event_cont_count) + "><COUNT=" + str (dsm_cc_count_event_counter) + "><TIME=" + insertTime.strftime('%H%M%S')+ ">"
+                                    this_packet_type = "COUNT EVENT"
                                 dsm_cc_count_event_counter += 1
                             next_inserted_payload = bytes (payload, 'utf-8')
                             
@@ -1331,7 +1345,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
                             proportionPacket = packetInsertionNumber / packetsInFile
                             proportionTime = proportionPacket * fileSeconds
                             
-                            print(f"Packet {packetCount} inserted at {packetInsertionNumber} packets ({proportionTime} seconds)")
+                            print(f"{this_packet_type} Packet {packetCount} inserted at {packetInsertionNumber} packets ({proportionTime} seconds)")
 
                             # Seek everyXpackets again (correcting the offset)
                             #file.seek(packet_size * (everyXPackets - 1), os.SEEK_CUR)
@@ -1672,7 +1686,7 @@ def save_pat():
 
 def serviceChoice():
 
-    print ("Reading Service List....\n")
+    print ("Reading Service List....")
     tree = ET.parse("patXML.xml")
     root = tree.getroot()
     servicesList = []
@@ -1687,14 +1701,16 @@ def serviceChoice():
             serviceName = get_service_name(service_id)
             servicesList.append([service_id, program_map_pid, serviceName])
             print(f"Index: {index}, Service ID: {service_id}, Program Map PID: {program_map_pid}, Service Name: {serviceName}")
-            
+        
         # Choose the service        
-        choice = int(input("Enter the index of the service: "))
-        if(choice>=0 and choice < len(services)):
-            serviceChoice = servicesList[choice][0]
-            pmtChoice = servicesList[choice][1]
-            serviceName = servicesList[choice][2]
-            return([serviceChoice, pmtChoice, serviceName])
+        while (1):
+            choice = int(input("Enter the index of the service to process: "))
+            if(choice>=0 and choice < len(services)):
+                serviceChoice = servicesList[choice][0]
+                pmtChoice = servicesList[choice][1]
+                serviceName = servicesList[choice][2]
+                return([serviceChoice, pmtChoice, serviceName])
+            print ("Invalid Service Index")
 
 
 
@@ -1810,22 +1826,34 @@ def check_tsduck_version():
     
 if __name__ == "__main__":
 
-    
+    print(f"HbbTV File Stream Manipulator - Version: {applicationVersionNumber}")   
+    print(f"==============================================\n")   
     datetime = datetime.now()
     cTime = datetime.strftime("%Y%m%d%H%M%S")
     
+    if (len (sys.argv) == 1):
+        print ("Usage : HBBTV_Manipulator <input file>")
+        sys.exit(0)
+       
     input_file = argv[1]
     if not(input_file.endswith(".ts")):
         input_file = input_file + ".ts"
     output_file = argv[1]+(f"_Processed_{cTime}.ts")
     
-    print(f"HbbTV File Stream Manipulator - Version: {applicationVersionNumber}\n")
+
     #Check for TS Duck
     if not(check_tsduck_version):
        print("TSDuck is required in the path for this application to work. \nDownload at https://tsduck.io/download/tsduck/") 
        sys.exit(0)
-    else: 
-        processMultiple(input_file, output_file)
+       
+    # Get the current directory
+    current_directory = os.getcwd()
+    file_path = os.path.join(current_directory, input_file)
+    if not (os.path.exists(file_path)):
+       print(f"File {input_file} does not exist") 
+       sys.exit(0)    
+       
+    processMultiple(input_file, output_file)
         
     print ("Cleaning up Intermediate Files.....")
     #Delete intermediate files
