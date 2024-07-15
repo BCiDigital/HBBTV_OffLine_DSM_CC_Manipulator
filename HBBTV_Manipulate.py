@@ -15,7 +15,7 @@ import re
 import math
 import time
 
-applicationVersionNumber = "2.0.0"
+applicationVersionNumber = "2.2.0"
 version_count=1
 cont_count = 1
 
@@ -849,6 +849,7 @@ def addAITComponentElement(xml_file, pid):
 
 
 
+
 def process_ts_file(input_file, output_file, processNumber, pmt_pid):
     """
     Function to process the input stream and send to an output stream
@@ -914,9 +915,14 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
             choice2 = 0
         
         if choice2 != "1": 
-            aitXML = (input("\nXML File Name: "))
-            if not(aitXML.endswith('.xml')):
-                aitXML = aitXML+".xml"
+            while True:
+                aitXML = (input("\nXML File Name: "))
+                if not(aitXML.endswith('.xml')):
+                    aitXML = aitXML+".xml"
+                if os.path.exists (aitXML):
+                    break
+                print (f"File {aitXML} not found")
+                
             print(f"Adding AIT Element to PMT on PID {aitPID}")
             insert_table('intermediate.ts', aitPID, aitXML, insertRate, 'intermediate-b.ts')
         else:
@@ -1031,9 +1037,14 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
             choice2 = 0
         
         if choice2 != "1":
-            aitXML = (input("\nXML File Name: "))
-            if not(aitXML.endswith('.xml')):
-                aitXML = aitXML+".xml"
+            while True:
+                aitXML = (input("\nXML File Name: "))
+                if not(aitXML.endswith('.xml')):
+                    aitXML = aitXML+".xml"
+                if os.path.exists (aitXML):
+                    break
+                print (f"File {aitXML} not found")
+
             print(f"Adding AIT Element to PMT on PID {aitPID}")
             insert_table(input_file, aitPID, aitXML, insertRate, 'intermediate.ts')
         else:
@@ -1075,16 +1086,20 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         print(f"0: Add Date")
         print(f"1: Add Iterator")
         print(f"2: Capability EVENT Sequence")
-        print(f"3: Capability EVENT Sequence with BREAKs")
-        
+        print(f"3: Capability EVENT Sequence with SPOTSs")
+        print(f"4: EVENT Sequence with Emulated BREAKs")       
         dsm_insert_mode = int(input("Option: "))
 
         
         #get the period
-        period = (input("\nEnter the insertion period (seconds - default 1s): "))
+        period = (input("\nEnter the insertion period;  For BREAK insertion this must be 1s (seconds - default 1s): "))
         if not period:
             period = "1"
+
         insertPeriod = (float (period))
+        if (dsm_insert_mode == 4 and insertPeriod != 1):
+            insertPeriod = 1
+            
         # Get the file size
         file_size = os.path.getsize("intermediate.ts")
         #convert Bytes to bits
@@ -1116,18 +1131,36 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         #print(f"packetsInFile {packetsInFile}")
         everyXPackets = int(proportion * packetsInFile)
 
+        print(f"Total Insertion points will be {packetsInFile/everyXPackets}")
+        
         #print(f"new one every {everyXPackets} packets.")
         
         
         #Option for Jitter (replacing packet intervals)
-        print("Jitter Management:")
-        print(f"0: Account for jitter (insert packets as close to {insertPeriod}s in the stream)")
-        print(f"1: Don't account for jitter (insert packets {insertPeriod}s after the last packet insertion) ")
-        choice = (input("Option: "))
+        if (dsm_insert_mode != 4):
+            print("Jitter Management:")
+            print(f"0: Account for jitter (insert packets as close to {insertPeriod}s in the stream)")
+            print(f"1: Don't account for jitter (insert packets {insertPeriod}s after the last packet insertion) ")
+            choice = (input("Option: "))
+        
         if not choice:
             choice = "0"
 
         manageJitter = (int (choice))
+        
+        
+      
+        # Build Break Insertion Pattern
+        if (dsm_insert_mode == 4):
+            break_pattern = [30, 30, 40, 20, 10, 50]
+            break_packet_pattern = [0,1,2,3,4,5]
+            break_packet_pattern [0] = 10 * everyXPackets  # Start 10 seconds in 
+            break_packet_pattern [1] = break_packet_pattern[0] + break_pattern [0] * everyXPackets
+            break_packet_pattern [2] = break_packet_pattern[1] + break_pattern [1] * everyXPackets
+            break_packet_pattern [3] = break_packet_pattern[2] + break_pattern [2] * everyXPackets
+            break_packet_pattern [4] = break_packet_pattern[3] + break_pattern [3] * everyXPackets
+            break_packet_pattern [5] = break_packet_pattern[4] + break_pattern [4] * everyXPackets     
+
 
         #Select a suitable PID
         entry = input("\nEnter PID for packets (default - autoselect above 32): ")
@@ -1182,6 +1215,9 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
             first_spot_event_location = (int)(total_packet_insertions * 0.25)
             second_spot_event_location = (int)(total_packet_insertions * 0.75)
             print(f"Inserting Spot Events at Packet {first_spot_event_location} and packet {second_spot_event_location}")
+        elif dsm_insert_mode ==4:
+            print(f"Inserting Full BREAK Spot Events at Packets {break_packet_pattern[0]}, {break_packet_pattern[1]}, {break_packet_pattern[2]}, {break_packet_pattern[3]}, {break_packet_pattern[4]}, {break_packet_pattern[5]}")
+        
         else:
             first_spot_event_location = 0
             second_spot_event_location = 0           
@@ -1190,7 +1226,7 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
         pid_mask = 0x1FFF
         null_pid = 0x1FFF
         file_path = "intermediate.ts"
-        
+        break_spot = 0        
         with open(file_path, 'r+b') as file:
             #packet count
             packetCount = 0
@@ -1263,38 +1299,49 @@ def process_ts_file(input_file, output_file, processNumber, pmt_pid):
                             else:
                                 payload = "<EVENT TYPE=COUNT><CONTINUITY COUNT=" + str (dsm_cc_event_cont_count) + "><COUNT=" + str (dsm_cc_count_event_counter) + "><TIME=" + insertTime.strftime('%H%M%S')+ ">"
                                 dsm_cc_count_event_counter += 1
-
                             #print (payload)
                             next_inserted_payload = bytes (payload, 'utf-8')
-                                                   
+                        
+                        if dsm_insert_mode == 4:
+                            insertTime = insertTime + timedelta (0,insertPeriod)
+                            if (break_spot < 6 and packetCount*everyXPackets >= break_packet_pattern [break_spot]):
+                                payload = "<EVENT TYPE=SPOT><CONTINUITY COUNT=" + str (dsm_cc_event_cont_count) + "><EVENTID=1000" + str (break_spot) + "><SPOT=" + str (break_spot) + "><DURATION=" + str (break_pattern[break_spot]) + "><TIME=" + insertTime.strftime('%H%M%S')+ ">"
+                                break_spot += 1
+                                dsm_cc_count_event_counter += 1
+                            else:
+                                payload = ""
+                                dsm_cc_count_event_counter += 1
+                            next_inserted_payload = bytes (payload, 'utf-8')
+                            
+                            
                         dsmcc_packet = buildDSMCCPacket(next_inserted_payload, dsm_cc_version_count, result, dsm_cc_cont_count, bypassbase64)
 
-                     
-                        # Seek back to the beginning of the found packet
-                        file.seek(-packet_size, os.SEEK_CUR)
+                        if (payload != ""):
+                            # Seek back to the beginning of the found packet
+                            file.seek(-packet_size, os.SEEK_CUR)
 
-                        # Write dsmcc_packet bytes to replace the packet
-                        file.write(dsmcc_packet)
-                        hex_string = binascii.hexlify(dsmcc_packet).decode('utf-8')
+                            # Write dsmcc_packet bytes to replace the packet
+                            file.write(dsmcc_packet)
+                            hex_string = binascii.hexlify(dsmcc_packet).decode('utf-8')
 
-                        #print(hex_string)
+                            #print(hex_string)
 
-                        packetInsertionNumber = (packetCount*everyXPackets)+jitterCount
-                        #convert to time
-                        proportionPacket = packetInsertionNumber / packetsInFile
-                        proportionTime = proportionPacket * fileSeconds
-                        
-                        print(f"Packet {packetCount} inserted at {packetInsertionNumber} packets ({proportionTime} seconds)")
+                            packetInsertionNumber = (packetCount*everyXPackets)+jitterCount
+                            #convert to time
+                            proportionPacket = packetInsertionNumber / packetsInFile
+                            proportionTime = proportionPacket * fileSeconds
+                            
+                            print(f"Packet {packetCount} inserted at {packetInsertionNumber} packets ({proportionTime} seconds)")
 
-                        # Seek everyXpackets again (correcting the offset)
-                        #file.seek(packet_size * (everyXPackets - 1), os.SEEK_CUR)
-                        #print(f"SEEKING {everyXPackets} packets, {packet_size * (everyXPackets - 1)} bytes")
+                            # Seek everyXpackets again (correcting the offset)
+                            #file.seek(packet_size * (everyXPackets - 1), os.SEEK_CUR)
+                            #print(f"SEEKING {everyXPackets} packets, {packet_size * (everyXPackets - 1)} bytes")
 
-                        #Update cont_count and dsm_cc_version_count
-                        dsm_cc_cont_count += 1                    
-                        dsm_cc_cont_count &= 0x0F  
-                        dsm_cc_version_count += 1
-                        dsm_cc_event_cont_count +=1
+                            #Update cont_count and dsm_cc_version_count
+                            dsm_cc_cont_count += 1                    
+                            dsm_cc_cont_count &= 0x0F  
+                            dsm_cc_version_count += 1
+                            dsm_cc_event_cont_count +=1
                         break
                     else:
                         jitterCount += 1
@@ -1624,6 +1671,8 @@ def save_pat():
             
 
 def serviceChoice():
+
+    print ("Reading Service List....\n")
     tree = ET.parse("patXML.xml")
     root = tree.getroot()
     servicesList = []
@@ -1678,10 +1727,11 @@ def processMultiple(input_file, output_file):
     print("0: No")
     print("1: Yes")
     choice = (input("Select: "))
+
     if not choice:
         more = 0
     else:
-        more = 1
+        more = int (choice)
     if(more == 1):
         #getXML(output_file)
         #save_pat()
@@ -1691,8 +1741,6 @@ def processMultiple(input_file, output_file):
         #Process temp file to output.
         processMultiple(tempFile, output_file)
     
-    
-   
 
 def copy_ts_file(source_file, destination_file):
     """
@@ -1779,7 +1827,7 @@ if __name__ == "__main__":
     else: 
         processMultiple(input_file, output_file)
         
-        
+    print ("Cleaning up Intermediate Files.....")
     #Delete intermediate files
     files_to_delete = ['pmtXML.xml', 'aitXML.xml',  'patXML.xml', 'dataXML.xml','tempTS.ts','intermediate.ts','intermediate-b.ts']
 
@@ -1797,36 +1845,8 @@ if __name__ == "__main__":
             os.remove(file_path)
             #print(f"Deleted {filename}")
         
-    """
-    #os.remove("intermediate.ts")
-    if os.path.exists("intermediate-b.ts"):
-        os.remove("intermediate-b.ts")
-    os.remove("patXML.xml")
-    os.remove("pmtXML.xml")
-    os.remove("dataXML.xml")
-    """
-    
-    """
-    choices = serviceChoice()
-    service = choices[0]
-    pmtPID = choices[1]
-   
-    save_pmt_by_service_id(service)
-    process_ts_file(input_file, output_file, service, pmtPID)
-    """
-    
-
-    
-    
-    """
-    Take file name make input and output files
-    get the XML of the PAT and store in patXML.xml
-    choose service from patXML.xml
-    store xml of PSI in data.xml
-    get PMT for specific service by trimming data.xml and store in pmtXML.xml
-    data.xml used again to get available pids.
-    """
-    
+    print ("Done")
+    print (f"Output File {output_file} generated")
     
     
    
